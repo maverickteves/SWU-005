@@ -55,12 +55,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // PostgreSQL Database Credentials
-// These can be configured directly or overridden via environment variables
-$dbHost = getenv('DB_HOST') ?: 'psql.fr-roub1.bengt.wasmernet.com';
-$dbPort = getenv('DB_PORT') ?: '20184';
-$dbName = getenv('DB_NAME') ?: 'real_estate';
-$dbUser = getenv('DB_USER') ?: 'user_371c074e';
-$dbPass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : 'postgpw_ISHGdHn4TLjP4osv0xXW2p7WIgS5PDjbres';
+// Configure these values in the server environment. Do not hardcode secrets here.
+$dbHost = getenv('DB_HOST');
+$dbPort = getenv('DB_PORT');
+$dbName = getenv('DB_NAME');
+$dbUser = getenv('DB_USER');
+$dbPass = getenv('DB_PASSWORD');
+
+foreach (['DB_HOST' => $dbHost, 'DB_PORT' => $dbPort, 'DB_NAME' => $dbName, 'DB_USER' => $dbUser, 'DB_PASSWORD' => $dbPass] as $variable => $value) {
+    if ($value === false || $value === '') {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => "Required database environment variable is missing: {$variable}"
+        ], JSON_UNESCAPED_SLASHES);
+        exit();
+    }
+}
 
 /**
  * Returns a singleton PDO connection to the PostgreSQL database.
