@@ -56,11 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // PostgreSQL Database Credentials
 // These can be configured directly or overridden via environment variables
-$dbHost = getenv('DB_HOST') ?: '127.0.0.1';
-$dbPort = getenv('DB_PORT') ?: '5432';
-$dbName = getenv('DB_NAME') ?: 'estateflow_db';
-$dbUser = getenv('DB_USER') ?: 'postgres';
-$dbPass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : 'postgres';
+$dbHost = getenv('DB_HOST') ?: 'psql.fr-roub1.bengt.wasmernet.com';
+$dbPort = getenv('DB_PORT') ?: '20184';
+$dbName = getenv('DB_NAME') ?: 'real_estate';
+$dbUser = getenv('DB_USER') ?: 'user_371c074e';
+$dbPass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : 'postgpw_ISHGdHn4TLjP4osv0xXW2p7WIgS5PDjbres';
 
 /**
  * Returns a singleton PDO connection to the PostgreSQL database.
