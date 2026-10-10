@@ -1,0 +1,44 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+config/db.local.php
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Runtime files, logs, and local uploads
+*.log
+/logs/
+/tmp/
+/cache/
+/uploads/
+/storage/
+
+# Database dumps and local exports
+*.sql.gz
+*.dump
+*.bak
+
+# PHP/XAMPP local files
+php_errors.log
+error_log
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Test and coverage output
+/.phpunit.result.cache
+/.phpunit.cache/
+/.coverage/
+/coverage/
