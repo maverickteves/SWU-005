@@ -1,0 +1,13 @@
+kind: wasmer.io/App.v0
+name: SWU-005
+owner: maverickteves
+package: .
+app_id: da_R36ILtlUQG3v
+annotations:
+  anybuild.run/config:
+    name: out
+    phpix: true
+  anybuild.run/provider: php
+  anybuild.run/version: 0.33.0
+  wasmer.io/version: 7.5.0
+enable_email: true
