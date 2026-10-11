@@ -61,7 +61,10 @@ $dbPort = getenv('DB_PORT') ?: '20184';
 $dbName = getenv('DB_NAME') ?: 'estateflow';
 $dbUser = getenv('DB_USER') ?: 'user_9137c366';
 $dbPass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : 'pw_oTbclj2azWq0NEQb9g85yylGvcUXVcnh';
+<<<<<<< HEAD
 
+=======
+>>>>>>> 10d991942e650d6a9cb57ecdbb6103bd8f4091e8
 // Wasmer's managed PostgreSQL only accepts encrypted connections
 $dbSslMode = getenv('DB_SSLMODE') ?: 'require';
 
