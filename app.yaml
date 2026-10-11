@@ -1,8 +1,8 @@
 kind: wasmer.io/App.v0
-name: SWU-005
+name: swu-005
 owner: maverickteves
 package: .
-app_id: da_R36ILtlUQG3v
+app_id: da_R36ILtlUQG51
 annotations:
   anybuild.run/config:
     name: out
