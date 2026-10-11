@@ -56,11 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // PostgreSQL Database Credentials
 // Configure these values in the server environment. Do not hardcode secrets here.
-$dbHost = getenv('DB_HOST');
-$dbPort = getenv('DB_PORT');
-$dbName = getenv('DB_NAME');
-$dbUser = getenv('DB_USER');
-$dbPass = getenv('DB_PASSWORD');
+$dbHost = getenv('DB_HOST') ?: 'psql.fr-roub1.bengt.wasmernet.com';
+$dbPort = getenv('DB_PORT') ?: '20184';
+$dbName = getenv('DB_NAME') ?: 'estateflow';
+$dbUser = getenv('DB_USER') ?: 'user_9137c366';
+$dbPass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : 'pw_oTbclj2azWq0NEQb9g85yylGvcUXVcnh';
 
 foreach (['DB_HOST' => $dbHost, 'DB_PORT' => $dbPort, 'DB_NAME' => $dbName, 'DB_USER' => $dbUser, 'DB_PASSWORD' => $dbPass] as $variable => $value) {
     if ($value === false || $value === '') {
