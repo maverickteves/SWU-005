@@ -37,6 +37,12 @@ try {
         'postgres_version' => $pgVersion,
         'server_time' => date('Y-m-d H:i:s T'),
         'table_stats' => $counts,
+        'config' => [
+            'host' => $dbHost,
+            'port' => $dbPort,
+            'database' => $dbName,
+            'user' => $dbUser
+        ],
         'endpoints' => [
             'properties' => 'api/properties.php',
             'appointments' => 'api/appointments.php',
@@ -47,8 +53,7 @@ try {
         ]
     ]);
 } catch (Exception $e) {
-    error_log('Status check failed: ' . $e->getMessage());
-    errorResponse('Status check failed', 500, [
+    errorResponse('Status check failed: ' . $e->getMessage(), 500, [
         'status' => 'OFFLINE',
         'troubleshooting' => 'Verify PostgreSQL is running and pdo_pgsql extension is enabled in XAMPP php.ini.'
     ]);

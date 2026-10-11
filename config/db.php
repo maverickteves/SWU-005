@@ -56,17 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // PostgreSQL Database Credentials
 // Configure these values in the server environment. Do not hardcode secrets here.
-$dbHost = getenv('DB_HOST') ?: 'psql.fr-roub1.bengt.wasmernet.com';
-$dbPort = getenv('DB_PORT') ?: '20184';
-$dbName = getenv('DB_NAME') ?: 'estateflow';
-$dbUser = getenv('DB_USER') ?: 'user_9137c366';
-$dbPass = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : 'pw_oTbclj2azWq0NEQb9g85yylGvcUXVcnh';
-<<<<<<< HEAD
-
-=======
->>>>>>> 10d991942e650d6a9cb57ecdbb6103bd8f4091e8
-// Wasmer's managed PostgreSQL only accepts encrypted connections
-$dbSslMode = getenv('DB_SSLMODE') ?: 'require';
+$dbHost = getenv('DB_HOST');
+$dbPort = getenv('DB_PORT');
+$dbName = getenv('DB_NAME');
+$dbUser = getenv('DB_USER');
+$dbPass = getenv('DB_PASSWORD');
 
 foreach (['DB_HOST' => $dbHost, 'DB_PORT' => $dbPort, 'DB_NAME' => $dbName, 'DB_USER' => $dbUser, 'DB_PASSWORD' => $dbPass] as $variable => $value) {
     if ($value === false || $value === '') {
@@ -101,7 +95,7 @@ function getDatabaseConnection() {
             exit();
         }
 
-        $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$dbName};sslmode={$dbSslMode}";
+        $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$dbName};";
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -112,13 +106,23 @@ function getDatabaseConnection() {
         try {
             $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
         } catch (PDOException $e) {
-            // Full details go to the server log only; clients get a generic message
-            error_log('Database connection failed: ' . $e->getMessage());
             http_response_code(500);
             echo json_encode([
                 'success' => false,
-                'error' => 'Database connection failed'
-            ], JSON_UNESCAPED_SLASHES);
+                'error' => 'Database connection failed: ' . $e->getMessage(),
+                'details' => [
+                    'host' => $dbHost,
+                    'port' => $dbPort,
+                    'database' => $dbName,
+                    'user' => $dbUser,
+                    'troubleshooting' => [
+                        '1' => 'Ensure PostgreSQL service is running on port ' . $dbPort,
+                        '2' => 'Verify database "' . $dbName . '" has been created in PostgreSQL',
+                        '3' => 'Check username and password in backend/config/db.php',
+                        '4' => 'Import database/schema.sql into PostgreSQL using pgAdmin or psql'
+                    ]
+                ]
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             exit();
         }
     }
