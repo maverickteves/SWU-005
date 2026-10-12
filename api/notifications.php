@@ -9,14 +9,15 @@ require_once __DIR__ . '/../config/formatters.php';
 
 $db = getDatabaseConnection();
 $method = $_SERVER['REQUEST_METHOD'];
+$user = requireUser($db);
 
 switch ($method) {
     case 'GET':
-        handleGetNotifications($db);
+        handleGetNotifications($db, $user);
         break;
 
     case 'PUT':
-        handleUpdateNotification($db);
+        handleUpdateNotification($db, $user);
         break;
 
     case 'POST':
@@ -39,18 +40,26 @@ function formatNotificationRow($row) {
     ];
 }
 
-function handleGetNotifications($db) {
-    $stmt = $db->query("SELECT * FROM notifications ORDER BY created_at DESC");
+function handleGetNotifications($db, $user) {
+    if (isBuyer($user)) {
+        [$where, $params] = buyerNotificationFilter($user);
+        $stmt = $db->prepare("SELECT * FROM notifications WHERE $where ORDER BY created_at DESC");
+        $stmt->execute($params);
+    } else {
+        $stmt = $db->query("SELECT * FROM notifications ORDER BY created_at DESC");
+    }
     $rows = $stmt->fetchAll();
     jsonResponse(array_map('formatNotificationRow', $rows));
 }
 
-function handleUpdateNotification($db) {
+function handleUpdateNotification($db, $user) {
     $input = getJsonInput();
     $action = $_GET['action'] ?? $input['action'] ?? 'mark_read';
+    [$where, $params] = isBuyer($user) ? buyerNotificationFilter($user) : ['TRUE', []];
 
     if ($action === 'mark_all_read') {
-        $db->query("UPDATE notifications SET is_read = TRUE");
+        $stmt = $db->prepare("UPDATE notifications SET is_read = TRUE WHERE $where");
+        $stmt->execute($params);
         jsonResponse(['success' => true, 'message' => "All notifications marked as read."]);
     }
 
@@ -59,8 +68,8 @@ function handleUpdateNotification($db) {
         errorResponse("Missing notification ID.");
     }
 
-    $stmt = $db->prepare("UPDATE notifications SET is_read = TRUE WHERE id = :id");
-    $stmt->execute(['id' => $id]);
+    $stmt = $db->prepare("UPDATE notifications SET is_read = TRUE WHERE id = :id AND ($where)");
+    $stmt->execute(array_merge(['id' => $id], $params));
 
     jsonResponse(['success' => true, 'id' => $id, 'isRead' => true]);
 }

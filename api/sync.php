@@ -11,36 +11,64 @@ $db = getDatabaseConnection();
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
-    // Return full server state
-    handleGetFullSyncState($db);
+    // Return the server state this caller may see. Listings are public so guests can browse.
+    handleGetFullSyncState($db, currentUser($db));
 } elseif ($method === 'POST') {
     // Receive client changes, apply to Postgres, and return latest merged state
-    handlePostSync($db);
+    handlePostSync($db, requireUser($db, ['AGENT']));
 } else {
     errorResponse("Unsupported HTTP method: $method", 405);
 }
 
-function handleGetFullSyncState($db) {
+function handleGetFullSyncState($db, $user) {
+    // Agents get everything. Buyers get their own records. Guests get only public listings
+    // once AUTH_REQUIRED is on; until then they get everything, as older app builds expect.
+    $seesAll = isAgent($user) || ($user === null && !authRequired());
+    $isBuyer = isBuyer($user);
+    $email = $isBuyer ? strtolower($user['email']) : null;
+
     // 1. Properties
     $pStmt = $db->query("SELECT * FROM properties ORDER BY created_at DESC");
     $properties = array_map('formatPropertyRow', $pStmt->fetchAll());
 
     // 2. Appointments
-    $aStmt = $db->query("SELECT * FROM viewing_appointments ORDER BY created_timestamp DESC");
-    $appointments = array_map('formatAppointmentRow', $aStmt->fetchAll());
+    $appointments = [];
+    if ($seesAll) {
+        $aStmt = $db->query("SELECT * FROM viewing_appointments ORDER BY created_timestamp DESC");
+        $appointments = array_map('formatAppointmentRow', $aStmt->fetchAll());
+    } elseif ($isBuyer) {
+        $aStmt = $db->prepare("SELECT * FROM viewing_appointments WHERE LOWER(client_email) = :email ORDER BY created_timestamp DESC");
+        $aStmt->execute(['email' => $email]);
+        $appointments = array_map('formatAppointmentRow', $aStmt->fetchAll());
+    }
 
     // 3. Inquiries
-    $iStmt = $db->query("SELECT * FROM inquiries ORDER BY updated_at DESC");
+    $inquiryRows = [];
+    if ($seesAll) {
+        $inquiryRows = $db->query("SELECT * FROM inquiries ORDER BY updated_at DESC")->fetchAll();
+    } elseif ($isBuyer) {
+        $iStmt = $db->prepare("SELECT * FROM inquiries WHERE LOWER(sender_email) = :email ORDER BY updated_at DESC");
+        $iStmt->execute(['email' => $email]);
+        $inquiryRows = $iStmt->fetchAll();
+    }
     $inquiries = [];
-    foreach ($iStmt->fetchAll() as $inq) {
+    foreach ($inquiryRows as $inq) {
         $mStmt = $db->prepare("SELECT * FROM inquiry_messages WHERE inquiry_id = :id ORDER BY created_at ASC");
         $mStmt->execute(['id' => $inq['id']]);
         $inquiries[] = formatInquiryWithMessages($inq, $mStmt->fetchAll());
     }
 
-    // 4. Notifications
-    $nStmt = $db->query("SELECT * FROM notifications ORDER BY created_at DESC");
-    $notifications = array_map('formatNotificationRow', $nStmt->fetchAll());
+    // 4. Notifications (same rules as notifications.php)
+    $notifications = [];
+    if ($seesAll) {
+        $nStmt = $db->query("SELECT * FROM notifications ORDER BY created_at DESC");
+        $notifications = array_map('formatNotificationRow', $nStmt->fetchAll());
+    } elseif ($isBuyer) {
+        [$where, $params] = buyerNotificationFilter($user);
+        $nStmt = $db->prepare("SELECT * FROM notifications WHERE $where ORDER BY created_at DESC");
+        $nStmt->execute($params);
+        $notifications = array_map('formatNotificationRow', $nStmt->fetchAll());
+    }
 
     // 5. Agent Profile
     $agStmt = $db->query("SELECT * FROM agent_profiles LIMIT 1");
@@ -70,7 +98,7 @@ function handleGetFullSyncState($db) {
     ]);
 }
 
-function handlePostSync($db) {
+function handlePostSync($db, $user) {
     $input = getJsonInput();
     $db->beginTransaction();
 
@@ -185,9 +213,10 @@ function handlePostSync($db) {
         if ($db->inTransaction()) {
             $db->rollBack();
         }
-        errorResponse("Bulk sync failed: " . $e->getMessage(), 500);
+        error_log('Bulk sync failed: ' . $e->getMessage());
+        errorResponse("Bulk sync failed. Please try again.", 500);
     }
 
     // Return the full updated state
-    handleGetFullSyncState($db);
+    handleGetFullSyncState($db, $user);
 }

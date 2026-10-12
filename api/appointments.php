@@ -9,22 +9,24 @@ require_once __DIR__ . '/../config/formatters.php';
 
 $db = getDatabaseConnection();
 $method = $_SERVER['REQUEST_METHOD'];
+// Agents see every appointment; buyers only their own
+$user = requireUser($db);
 
 switch ($method) {
     case 'GET':
-        handleGetAppointments($db);
+        handleGetAppointments($db, $user);
         break;
 
     case 'POST':
-        handleBookAppointment($db);
+        handleBookAppointment($db, $user);
         break;
 
     case 'PUT':
-        handleUpdateAppointmentStatus($db);
+        handleUpdateAppointmentStatus($db, $user);
         break;
 
     case 'DELETE':
-        handleDeleteAppointment($db);
+        handleDeleteAppointment($db, $user);
         break;
 
     default:
@@ -49,11 +51,32 @@ function formatAppointmentRow($row) {
     ];
 }
 
-function handleGetAppointments($db) {
+/**
+ * Stops a buyer from reading or changing someone else's appointment.
+ */
+function requireAppointmentAccess($db, $user, $id) {
+    if (!isBuyer($user)) {
+        return;
+    }
+    $stmt = $db->prepare("SELECT client_email FROM viewing_appointments WHERE id = :id");
+    $stmt->execute(['id' => $id]);
+    $owner = $stmt->fetchColumn();
+    if ($owner === false) {
+        errorResponse("Appointment not found", 404);
+    }
+    if (!sameEmail($owner, $user['email'])) {
+        errorResponse("You do not have permission to change this appointment.", 403);
+    }
+}
+
+function handleGetAppointments($db, $user) {
     $sql = "SELECT * FROM viewing_appointments WHERE 1=1";
     $params = [];
 
-    if (!empty($_GET['client_email'])) {
+    if (isBuyer($user)) {
+        $sql .= " AND LOWER(client_email) = :email";
+        $params['email'] = strtolower($user['email']);
+    } elseif (!empty($_GET['client_email'])) {
         $sql .= " AND LOWER(client_email) = :email";
         $params['email'] = strtolower(trim($_GET['client_email']));
     }
@@ -72,7 +95,7 @@ function handleGetAppointments($db) {
     jsonResponse(array_map('formatAppointmentRow', $rows));
 }
 
-function handleBookAppointment($db) {
+function handleBookAppointment($db, $user) {
     $input = getJsonInput();
 
     if (empty($input['propertyId']) || empty($input['date']) || empty($input['timeSlot'])) {
@@ -102,6 +125,18 @@ function handleBookAppointment($db) {
     $clientName = trim($input['clientName'] ?? 'You (Verified Buyer)');
     $clientPhone = trim($input['clientPhone'] ?? '+1 (555) 019-8234');
     $clientEmail = trim($input['clientEmail'] ?? 'buyer@estateflow.com');
+    if (isBuyer($user)) {
+        // Buyers always book as themselves
+        $clientEmail = $user['email'];
+        if (!empty($input['id'])) {
+            $existing = $db->prepare("SELECT client_email FROM viewing_appointments WHERE id = :id");
+            $existing->execute(['id' => $id]);
+            $owner = $existing->fetchColumn();
+            if ($owner !== false && !sameEmail($owner, $user['email'])) {
+                errorResponse("You do not have permission to change this appointment.", 403);
+            }
+        }
+    }
     $date = trim($input['date']);
     $timeSlot = trim($input['timeSlot']);
     $type = trim($input['type'] ?? 'Viewing');
@@ -154,7 +189,7 @@ function handleBookAppointment($db) {
     jsonResponse(formatAppointmentRow($created), 201);
 }
 
-function handleUpdateAppointmentStatus($db) {
+function handleUpdateAppointmentStatus($db, $user) {
     $input = getJsonInput();
     $id = $_GET['id'] ?? $input['id'] ?? null;
     $status = $_GET['status'] ?? $input['status'] ?? null;
@@ -170,6 +205,8 @@ function handleUpdateAppointmentStatus($db) {
         errorResponse("Invalid status value. Must be one of: " . implode(', ', $validStatuses));
     }
 
+    requireAppointmentAccess($db, $user, $id);
+
     $stmt = $db->prepare("UPDATE viewing_appointments SET status = :status WHERE id = :id RETURNING *");
     $stmt->execute(['id' => $id, 'status' => $status]);
     $updated = $stmt->fetch();
@@ -184,7 +221,7 @@ function handleUpdateAppointmentStatus($db) {
     }
 }
 
-function handleDeleteAppointment($db) {
+function handleDeleteAppointment($db, $user) {
     $id = $_GET['id'] ?? null;
     if (!$id) {
         $input = getJsonInput();
@@ -194,6 +231,8 @@ function handleDeleteAppointment($db) {
     if (!$id) {
         errorResponse("Missing appointment ID.");
     }
+
+    requireAppointmentAccess($db, $user, $id);
 
     $stmt = $db->prepare("DELETE FROM viewing_appointments WHERE id = :id");
     $stmt->execute(['id' => $id]);

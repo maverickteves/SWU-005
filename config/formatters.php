@@ -97,3 +97,21 @@ if (!function_exists('formatNotificationRow')) {
         ];
     }
 }
+
+if (!function_exists('buyerNotificationFilter')) {
+    /**
+     * Notifications have no recipient column yet, so a buyer sees listing updates plus
+     * anything about their own appointments and inquiries. Returns [SQL condition, params].
+     */
+    function buyerNotificationFilter($user) {
+        return [
+            "(type = 'LISTING_UPDATE'
+              OR target_id IN (SELECT id FROM viewing_appointments WHERE LOWER(client_email) = :buyer_email_appt)
+              OR target_id IN (SELECT id FROM inquiries WHERE LOWER(sender_email) = :buyer_email_inq))",
+            [
+                'buyer_email_appt' => strtolower($user['email']),
+                'buyer_email_inq' => strtolower($user['email'])
+            ]
+        ];
+    }
+}

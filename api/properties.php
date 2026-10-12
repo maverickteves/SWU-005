@@ -16,6 +16,8 @@ switch ($method) {
         break;
 
     case 'POST':
+        // Only agents create, edit, or remove listings
+        requireUser($db, ['AGENT']);
         $action = $_GET['action'] ?? '';
         if ($action === 'delete') {
             handleDeleteProperty($db);
@@ -29,6 +31,7 @@ switch ($method) {
         break;
 
     case 'DELETE':
+        requireUser($db, ['AGENT']);
         handleDeleteProperty($db);
         break;
 
@@ -247,6 +250,7 @@ function handleUpdateProperty($db) {
 
     // Handle toggle favorite action
     if ((isset($_GET['action']) && $_GET['action'] === 'toggle_favorite') || (isset($input['action']) && $input['action'] === 'toggle_favorite')) {
+        requireUser($db);
         $id = $_GET['id'] ?? $input['id'] ?? null;
         if (!$id) {
             errorResponse("Missing property ID for toggle favorite");
@@ -267,6 +271,7 @@ function handleUpdateProperty($db) {
     }
 
     // Full property update
+    requireUser($db, ['AGENT']);
     handleCreateProperty($db);
 }
 
@@ -333,6 +338,7 @@ function handleDeleteProperty($db) {
         if ($db->inTransaction()) {
             $db->rollBack();
         }
-        errorResponse("Failed to delete property: " . $e->getMessage(), 500);
+        error_log("Failed to delete property $id: " . $e->getMessage());
+        errorResponse("Failed to delete property. Please try again.", 500);
     }
 }

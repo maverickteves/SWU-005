@@ -9,25 +9,36 @@ require_once __DIR__ . '/../config/formatters.php';
 
 $db = getDatabaseConnection();
 $method = $_SERVER['REQUEST_METHOD'];
+// Agents see every lead; buyers only the conversations they started
+$user = requireUser($db);
 
 switch ($method) {
     case 'GET':
-        handleGetInquiries($db);
+        handleGetInquiries($db, $user);
         break;
 
     case 'POST':
-        handleCreateOrReplyInquiry($db);
+        handleCreateOrReplyInquiry($db, $user);
         break;
 
     case 'PUT':
-        handleUpdateInquiryStatus($db);
+        handleUpdateInquiryStatus($db, $user);
         break;
 
     default:
         errorResponse("Unsupported HTTP method: $method", 405);
 }
 
-function handleGetInquiries($db) {
+/**
+ * Stops a buyer from reading or writing to someone else's inquiry thread.
+ */
+function requireInquiryAccess($user, $inquiry) {
+    if (isBuyer($user) && !sameEmail($inquiry['sender_email'], $user['email'])) {
+        errorResponse("Inquiry not found", 404);
+    }
+}
+
+function handleGetInquiries($db, $user) {
     // Single inquiry lookup
     if (!empty($_GET['id'])) {
         $stmt = $db->prepare("SELECT * FROM inquiries WHERE id = :id");
@@ -36,6 +47,7 @@ function handleGetInquiries($db) {
         if (!$inq) {
             errorResponse("Inquiry not found", 404);
         }
+        requireInquiryAccess($user, $inq);
 
         // Fetch messages
         $mStmt = $db->prepare("SELECT * FROM inquiry_messages WHERE inquiry_id = :id ORDER BY created_at ASC");
@@ -45,8 +57,13 @@ function handleGetInquiries($db) {
         jsonResponse(formatInquiryWithMessages($inq, $msgs));
     }
 
-    // List all inquiries with messages
-    $stmt = $db->query("SELECT * FROM inquiries ORDER BY updated_at DESC");
+    // List inquiries with messages
+    if (isBuyer($user)) {
+        $stmt = $db->prepare("SELECT * FROM inquiries WHERE LOWER(sender_email) = :email ORDER BY updated_at DESC");
+        $stmt->execute(['email' => strtolower($user['email'])]);
+    } else {
+        $stmt = $db->query("SELECT * FROM inquiries ORDER BY updated_at DESC");
+    }
     $inquiries = $stmt->fetchAll();
 
     $result = [];
@@ -87,7 +104,7 @@ function formatInquiryWithMessages($inq, $msgs) {
     ];
 }
 
-function handleCreateOrReplyInquiry($db) {
+function handleCreateOrReplyInquiry($db, $user) {
     $input = getJsonInput();
 
     // Check if this is a reply to an existing inquiry
@@ -98,6 +115,10 @@ function handleCreateOrReplyInquiry($db) {
         $isAgent = isset($input['isAgent'])
             ? (filter_var($input['isAgent'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true)
             : true;
+        if ($user !== null) {
+            // The sender comes from the session, not from the request
+            $isAgent = isAgent($user);
+        }
 
         if (!$inquiryId || empty($replyText)) {
             errorResponse("Missing inquiryId or replyText.");
@@ -109,6 +130,7 @@ function handleCreateOrReplyInquiry($db) {
         if (!$inquiry) {
             errorResponse("Inquiry thread not found", 404);
         }
+        requireInquiryAccess($user, $inquiry);
 
         // Insert new message
         $msgId = 'msg_' . bin2hex(random_bytes(6));
@@ -148,6 +170,10 @@ function handleCreateOrReplyInquiry($db) {
     $messageText = trim($input['message']);
     $senderName = trim($input['senderName'] ?? 'You (Prospective Buyer)');
     $senderEmail = trim($input['senderEmail'] ?? 'buyer@estateflow.com');
+    if (isBuyer($user)) {
+        // Buyers always write as themselves
+        $senderEmail = $user['email'];
+    }
     $senderPhone = trim($input['senderPhone'] ?? '+1 (555) 019-8234');
 
     // Get property details
@@ -218,11 +244,12 @@ function handleCreateOrReplyInquiry($db) {
         jsonResponse(formatInquiryWithMessages($row, $msgs), 201);
     } catch (Exception $e) {
         $db->rollBack();
-        errorResponse("Failed to create inquiry: " . $e->getMessage(), 500);
+        error_log('Failed to create inquiry: ' . $e->getMessage());
+        errorResponse("Failed to create inquiry. Please try again.", 500);
     }
 }
 
-function handleUpdateInquiryStatus($db) {
+function handleUpdateInquiryStatus($db, $user) {
     $input = getJsonInput();
     $id = $_GET['id'] ?? $input['id'] ?? null;
     $action = $_GET['action'] ?? $input['action'] ?? null;
@@ -232,6 +259,15 @@ function handleUpdateInquiryStatus($db) {
     }
 
     if ($action === 'mark_read') {
+        if (isBuyer($user)) {
+            $check = $db->prepare("SELECT * FROM inquiries WHERE id = :id");
+            $check->execute(['id' => $id]);
+            $inquiry = $check->fetch();
+            if (!$inquiry) {
+                errorResponse("Inquiry not found", 404);
+            }
+            requireInquiryAccess($user, $inquiry);
+        }
         $stmt = $db->prepare("UPDATE inquiries SET is_unread = FALSE WHERE id = :id");
         $stmt->execute(['id' => $id]);
         jsonResponse(['success' => true, 'id' => $id, 'isUnread' => false]);

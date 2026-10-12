@@ -19,6 +19,8 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 header("Content-Type: application/json; charset=utf-8");
+header("X-Content-Type-Options: nosniff");
+header("Cache-Control: no-store");
 
 // Convert unhandled PHP errors and exceptions into JSON responses
 set_error_handler(function($severity, $message, $file, $line) {
@@ -28,10 +30,12 @@ set_error_handler(function($severity, $message, $file, $line) {
     if (ob_get_length()) {
         ob_clean();
     }
+    // Details go to the server log only; clients never see file paths or SQL
+    error_log("PHP Error: $message in $file on line $line");
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'error' => "PHP Error: $message in " . basename($file) . " on line $line"
+        'error' => 'Something went wrong on the server. Please try again.'
     ], JSON_UNESCAPED_SLASHES);
     exit();
 });
@@ -40,10 +44,11 @@ set_exception_handler(function($e) {
     if (ob_get_length()) {
         ob_clean();
     }
+    error_log('Server Exception: ' . $e);
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'error' => "Server Exception: " . $e->getMessage()
+        'error' => 'Something went wrong on the server. Please try again.'
     ], JSON_UNESCAPED_SLASHES);
     exit();
 });
@@ -57,10 +62,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // PostgreSQL Database Credentials
 // Configure these values in the server environment. Do not hardcode secrets here.
 $dbHost = getenv('DB_HOST');
-$dbPort = getenv('DB_PORT');
+$dbPort = getenv('DB_PORT') ?: '5432';
 $dbName = getenv('DB_NAME');
 $dbUser = getenv('DB_USER');
 $dbPass = getenv('DB_PASSWORD');
+// Wasmer's managed PostgreSQL only accepts encrypted connections
+$dbSslMode = getenv('DB_SSLMODE') ?: 'require';
 
 foreach (['DB_HOST' => $dbHost, 'DB_PORT' => $dbPort, 'DB_NAME' => $dbName, 'DB_USER' => $dbUser, 'DB_PASSWORD' => $dbPass] as $variable => $value) {
     if ($value === false || $value === '') {
@@ -80,7 +87,7 @@ foreach (['DB_HOST' => $dbHost, 'DB_PORT' => $dbPort, 'DB_NAME' => $dbName, 'DB_
  * @throws PDOException
  */
 function getDatabaseConnection() {
-    global $dbHost, $dbPort, $dbName, $dbUser, $dbPass;
+    global $dbHost, $dbPort, $dbName, $dbUser, $dbPass, $dbSslMode;
     static $pdo = null;
 
     if ($pdo === null) {
@@ -95,7 +102,7 @@ function getDatabaseConnection() {
             exit();
         }
 
-        $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$dbName};";
+        $dsn = "pgsql:host={$dbHost};port={$dbPort};dbname={$dbName};sslmode={$dbSslMode}";
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -106,23 +113,13 @@ function getDatabaseConnection() {
         try {
             $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
         } catch (PDOException $e) {
+            // Full details go to the server log only; clients get a generic message
+            error_log('Database connection failed: ' . $e->getMessage());
             http_response_code(500);
             echo json_encode([
                 'success' => false,
-                'error' => 'Database connection failed: ' . $e->getMessage(),
-                'details' => [
-                    'host' => $dbHost,
-                    'port' => $dbPort,
-                    'database' => $dbName,
-                    'user' => $dbUser,
-                    'troubleshooting' => [
-                        '1' => 'Ensure PostgreSQL service is running on port ' . $dbPort,
-                        '2' => 'Verify database "' . $dbName . '" has been created in PostgreSQL',
-                        '3' => 'Check username and password in backend/config/db.php',
-                        '4' => 'Import database/schema.sql into PostgreSQL using pgAdmin or psql'
-                    ]
-                ]
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+                'error' => 'Database connection failed'
+            ], JSON_UNESCAPED_SLASHES);
             exit();
         }
     }
@@ -179,3 +176,5 @@ function generateUuid() {
         mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
     );
 }
+
+require_once __DIR__ . '/auth.php';

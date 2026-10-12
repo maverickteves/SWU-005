@@ -69,24 +69,29 @@ function handleAuthAction($db) {
                 errorResponse("Password is required to log in.", 400);
             }
 
+            $limitKey = 'client:' . strtolower($email);
+            enforceLoginLimit($db, $limitKey);
+
             // Look up existing buyer account by email
             $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = :email AND role = 'BUYER' LIMIT 1");
             $stmt->execute(['email' => strtolower($email)]);
             $user = $stmt->fetch();
 
             if (!$user) {
+                recordLoginFailure($db, $limitKey);
                 errorResponse("Account not found for '$email'. Please create an account first.", 401);
             }
 
-            // Verify password if hash exists
-            if (!empty($user['password_hash'])) {
-                if (!password_verify($password, $user['password_hash'])) {
-                    errorResponse("Incorrect password for '$email'. Please check your password and try again.", 401);
-                }
+            // Accounts without a stored password can never be signed into
+            if (empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
+                recordLoginFailure($db, $limitKey);
+                errorResponse("Incorrect password for '$email'. Please check your password and try again.", 401);
             }
+            clearLoginFailures($db, $limitKey);
 
             jsonResponse([
                 'success' => true,
+                'token' => issueAuthToken($user),
                 'user' => [
                     'id' => (string)$user['id'],
                     'name' => (string)$user['name'],
@@ -109,8 +114,8 @@ function handleAuthAction($db) {
             if (empty($email) || empty($name)) {
                 errorResponse("Full name and email address are required to create an account.", 400);
             }
-            if (strlen($password) < 4) {
-                errorResponse("Password must be at least 4 characters.", 400);
+            if (strlen($password) < 8) {
+                errorResponse("Password must be at least 8 characters.", 400);
             }
 
             // Strictly check if an account with this email already exists
@@ -139,6 +144,7 @@ function handleAuthAction($db) {
 
             jsonResponse([
                 'success' => true,
+                'token' => issueAuthToken($user),
                 'user' => [
                     'id' => (string)$user['id'],
                     'name' => (string)$user['name'],
@@ -163,22 +169,29 @@ function handleAuthAction($db) {
                 errorResponse("Password must be at least 4 characters.", 400);
             }
 
+            $identifier = strtolower($inputIdentifier);
+            $limitKey = 'agent:' . $identifier;
+            enforceLoginLimit($db, $limitKey);
+
             // Look up agent by email or license
             $stmt = $db->prepare("SELECT * FROM users WHERE (LOWER(email) = :email_ident OR LOWER(license_no) = :license_ident) AND role = 'AGENT' LIMIT 1");
-            $identifier = strtolower($inputIdentifier);
             $stmt->execute(['email_ident' => $identifier, 'license_ident' => $identifier]);
             $user = $stmt->fetch();
 
             if (!$user) {
+                recordLoginFailure($db, $limitKey);
                 errorResponse("Agent account not found for '$inputIdentifier'. Please register as a licensed agent first.", 401);
             }
 
             if (empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
+                recordLoginFailure($db, $limitKey);
                 errorResponse("Incorrect agent password.", 401);
             }
+            clearLoginFailures($db, $limitKey);
 
             jsonResponse([
                 'success' => true,
+                'token' => issueAuthToken($user),
                 'user' => [
                     'id' => (string)$user['id'],
                     'name' => (string)$user['name'],
@@ -200,8 +213,8 @@ function handleAuthAction($db) {
             $professionalRole = trim($input['professionalRole'] ?? 'Licensed Real Estate Agent');
             $password = trim($input['password'] ?? '');
 
-            if (empty($name) || empty($email) || empty($licenseNo) || strlen($password) < 4) {
-                errorResponse("Name, email, license number, and a password of at least 4 chars are required.", 400);
+            if (empty($name) || empty($email) || empty($licenseNo) || strlen($password) < 8) {
+                errorResponse("Name, email, license number, and a password of at least 8 characters are required.", 400);
             }
 
             // Check if agent account already exists
@@ -241,6 +254,7 @@ function handleAuthAction($db) {
 
             jsonResponse([
                 'success' => true,
+                'token' => issueAuthToken($user),
                 'user' => [
                     'id' => (string)$user['id'],
                     'name' => (string)$user['name'],
@@ -256,23 +270,47 @@ function handleAuthAction($db) {
 
         case 'update_password':
             $email = trim($input['email'] ?? '');
+            $currentPassword = trim($input['currentPassword'] ?? '');
             $newPassword = trim($input['newPassword'] ?? '');
-            if (empty($email) || strlen($newPassword) < 4) {
-                errorResponse("Email and new password of at least 4 chars are required.");
+            if (empty($email) || strlen($newPassword) < 8) {
+                errorResponse("Email and a new password of at least 8 characters are required.");
             }
+            if ($currentPassword === '') {
+                errorResponse("Please enter your current password.");
+            }
+
+            $sessionUser = requireUser($db);
+            if ($sessionUser !== null && !sameEmail($sessionUser['email'], $email)) {
+                errorResponse("You can only change your own password.", 403);
+            }
+
+            $limitKey = 'password:' . strtolower($email);
+            enforceLoginLimit($db, $limitKey);
+
+            $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = :email LIMIT 1");
+            $stmt->execute(['email' => strtolower($email)]);
+            $user = $stmt->fetch();
+            if (!$user || empty($user['password_hash']) || !password_verify($currentPassword, $user['password_hash'])) {
+                recordLoginFailure($db, $limitKey);
+                errorResponse("Your current password is incorrect.", 401);
+            }
+            clearLoginFailures($db, $limitKey);
 
             $hash = password_hash($newPassword, PASSWORD_DEFAULT);
-            $stmt = $db->prepare("UPDATE users SET password_hash = :hash WHERE LOWER(email) = :email");
-            $stmt->execute(['hash' => $hash, 'email' => strtolower($email)]);
+            $stmt = $db->prepare("UPDATE users SET password_hash = :hash, updated_at = CURRENT_TIMESTAMP WHERE id = :id RETURNING *");
+            $stmt->execute(['hash' => $hash, 'id' => $user['id']]);
+            $user = $stmt->fetch();
 
-            if ($stmt->rowCount() === 0) {
-                errorResponse("User account not found.", 404);
-            }
-
-            jsonResponse(['success' => true, 'message' => "Password updated successfully in PostgreSQL."]);
+            // The new password signs out other devices, so hand this one a fresh token
+            jsonResponse([
+                'success' => true,
+                'message' => "Password updated successfully in PostgreSQL.",
+                'token' => issueAuthToken($user)
+            ]);
             break;
 
         case 'update_profile':
+            requireUser($db, ['AGENT']);
             $email = trim($input['email'] ?? '');
             $name = trim($input['name'] ?? '');
             $licenseNo = trim($input['licenseNo'] ?? '');

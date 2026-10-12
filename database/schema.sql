@@ -432,3 +432,15 @@ VALUES
     FALSE,
     'inq_demo_1'
 ) ON CONFLICT (id) DO NOTHING;
+
+-- -------------------------------------------------------------------------
+-- 8. Table: login_attempts (failed sign-ins, used to slow down password guessing)
+-- -------------------------------------------------------------------------
+DROP TABLE IF EXISTS login_attempts CASCADE;
+CREATE TABLE login_attempts (
+    id BIGSERIAL PRIMARY KEY,
+    attempt_key VARCHAR(300) NOT NULL, -- e.g. 'client:jane@example.com'
+    attempted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_login_attempts_key_time ON login_attempts(attempt_key, attempted_at);
