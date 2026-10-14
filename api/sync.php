@@ -82,8 +82,7 @@ function handleGetFullSyncState($db, $user) {
     }
 
     // 5. Agent Profile
-    $agStmt = $db->query("SELECT * FROM agent_profiles LIMIT 1");
-    $ag = $agStmt->fetch();
+    $ag = agentProfileRow($db, $user);
     $agentProfile = $ag ? [
         'name' => (string)$ag['name'],
         'title' => (string)$ag['title'],
@@ -93,7 +92,7 @@ function handleGetFullSyncState($db, $user) {
         'rating' => (float)$ag['rating'],
         'reviewsCount' => (int)$ag['reviews_count'],
         'totalSalesVolume' => (string)$ag['total_sales_volume'],
-        'activeListingsCount' => count($properties),
+        'activeListingsCount' => countAgentListings($db, $ag['email']),
         'bio' => (string)$ag['bio']
     ] : null;
 

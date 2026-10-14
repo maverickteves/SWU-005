@@ -241,3 +241,27 @@ function agentOwnsProperty($db, $user, $propertyId) {
     $owner = $stmt->fetchColumn();
     return $owner !== false && sameEmail($owner, $user['email']);
 }
+
+/**
+ * The agent_profiles row to show. A signed-in agent gets their own (matched by email);
+ * everyone else gets the demo agent's profile. Returns null when none is found.
+ */
+function agentProfileRow($db, $user) {
+    if (isAgent($user)) {
+        $stmt = $db->prepare("SELECT * FROM agent_profiles WHERE LOWER(email) = :email LIMIT 1");
+        $stmt->execute(['email' => strtolower($user['email'])]);
+        $row = $stmt->fetch();
+        if ($row) {
+            return $row;
+        }
+    }
+    $stmt = $db->query("SELECT * FROM agent_profiles ORDER BY (id = 'agent_verified_sarah') DESC, updated_at ASC LIMIT 1");
+    return $stmt->fetch() ?: null;
+}
+
+/** Number of listings posted under this agent email. */
+function countAgentListings($db, $email) {
+    $stmt = $db->prepare("SELECT COUNT(*) FROM properties WHERE LOWER(agent_email) = :email");
+    $stmt->execute(['email' => strtolower((string)$email)]);
+    return (int)$stmt->fetchColumn();
+}

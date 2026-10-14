@@ -26,12 +26,9 @@ function handleGetProfile($db) {
     $action = $_GET['action'] ?? 'agent_profile';
 
     if ($action === 'agent_profile') {
-        $stmt = $db->query("SELECT * FROM agent_profiles LIMIT 1");
-        $profile = $stmt->fetch();
+        $profile = agentProfileRow($db, currentUser($db));
         if ($profile) {
-            // Count active listings
-            $countStmt = $db->query("SELECT COUNT(*) FROM properties");
-            $activeListings = (int)$countStmt->fetchColumn();
+            $activeListings = countAgentListings($db, $profile['email']);
 
             jsonResponse([
                 'name' => (string)$profile['name'],
@@ -247,13 +244,17 @@ function handleAuthAction($db) {
             ]);
             $user = $stmt->fetch();
 
-            // Update agent profile
-            $upStmt = $db->prepare("UPDATE agent_profiles SET name = :name, email = :email, license_no = :license, title = :title WHERE id = 'agent_verified_sarah'");
+            // Give the new agent their own profile (it used to overwrite the demo agent's)
+            $upStmt = $db->prepare("INSERT INTO agent_profiles (id, name, title, license_no, phone, email, rating, reviews_count, total_sales_volume, active_listings_count, bio)
+                                    VALUES (:id, :name, :title, :license, :phone, :email, 0, 0, '₱0', 0, '')
+                                    ON CONFLICT (id) DO NOTHING");
             $upStmt->execute([
+                'id' => $id,
                 'name' => $name,
-                'email' => $email,
+                'title' => "$professionalRole • $agency",
                 'license' => $licenseNo,
-                'title' => "$professionalRole • $agency"
+                'phone' => (string)$user['phone'],
+                'email' => $email
             ]);
 
             jsonResponse([
@@ -314,7 +315,12 @@ function handleAuthAction($db) {
             break;
 
         case 'update_profile':
-            requireUser($db, ['AGENT']);
+            // Only the signed-in agent's own account and profile can be changed
+            $agent = requireUser($db, ['AGENT']);
+            if ($agent === null) {
+                errorResponse('Please sign in to continue.', 401);
+            }
+            $previousEmail = $agent['email'];
             $email = trim($input['email'] ?? '');
             $name = trim($input['name'] ?? '');
             $licenseNo = trim($input['licenseNo'] ?? '');
@@ -323,27 +329,33 @@ function handleAuthAction($db) {
             if ($email === '' || $name === '' || $licenseNo === '') {
                 errorResponse("Email, name, and license number are required.");
             }
+            $licenseNo = normalizeLicenseNo($licenseNo);
+            if (!isValidLicenseNo($licenseNo)) {
+                errorResponse("License number must look like PRC-REB-0012345: PRC-REB- followed by exactly 7 digits.", 400);
+            }
 
             $userStmt = $db->prepare("UPDATE users
                                       SET name = :name, email = :email, license_no = :license,
                                           updated_at = CURRENT_TIMESTAMP
-                                      WHERE id = 'agent_verified_sarah'");
+                                      WHERE id = :id");
             $userStmt->execute([
                 'name' => $name,
                 'email' => $email,
-                'license' => $licenseNo
+                'license' => $licenseNo,
+                'id' => $agent['id']
             ]);
 
             $stmt = $db->prepare("UPDATE agent_profiles
                                   SET name = :name, email = :email, license_no = :license, title = :title,
                                       updated_at = CURRENT_TIMESTAMP
-                                  WHERE id = 'agent_verified_sarah'
+                                  WHERE LOWER(email) = :previous_email
                                   RETURNING *");
             $stmt->execute([
                 'name' => $name,
                 'email' => $email,
                 'license' => $licenseNo,
-                'title' => $title !== '' ? $title : 'Licensed Real Estate Agent'
+                'title' => $title !== '' ? $title : 'Licensed Real Estate Agent',
+                'previous_email' => strtolower($previousEmail)
             ]);
             $profile = $stmt->fetch();
             if (!$profile) {
