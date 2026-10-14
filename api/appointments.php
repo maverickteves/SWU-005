@@ -9,7 +9,7 @@ require_once __DIR__ . '/../config/formatters.php';
 
 $db = getDatabaseConnection();
 $method = $_SERVER['REQUEST_METHOD'];
-// Agents see every appointment; buyers only their own
+// Agents see appointments on their own listings; buyers only their own
 $user = requireUser($db);
 
 switch ($method) {
@@ -55,16 +55,19 @@ function formatAppointmentRow($row) {
  * Stops a buyer from reading or changing someone else's appointment.
  */
 function requireAppointmentAccess($db, $user, $id) {
-    if (!isBuyer($user)) {
+    if ($user === null) {
         return;
     }
-    $stmt = $db->prepare("SELECT client_email FROM viewing_appointments WHERE id = :id");
+    $stmt = $db->prepare("SELECT client_email, property_id FROM viewing_appointments WHERE id = :id");
     $stmt->execute(['id' => $id]);
-    $owner = $stmt->fetchColumn();
-    if ($owner === false) {
+    $row = $stmt->fetch();
+    if ($row === false) {
         errorResponse("Appointment not found", 404);
     }
-    if (!sameEmail($owner, $user['email'])) {
+    $allowed = isBuyer($user)
+        ? sameEmail($row['client_email'], $user['email'])
+        : agentOwnsProperty($db, $user, $row['property_id']);
+    if (!$allowed) {
         errorResponse("You do not have permission to change this appointment.", 403);
     }
 }
@@ -72,6 +75,11 @@ function requireAppointmentAccess($db, $user, $id) {
 function handleGetAppointments($db, $user) {
     $sql = "SELECT * FROM viewing_appointments WHERE 1=1";
     $params = [];
+
+    if (isAgent($user)) {
+        $sql .= " AND property_id IN (SELECT id FROM properties WHERE LOWER(agent_email) = :agent_email)";
+        $params['agent_email'] = strtolower($user['email']);
+    }
 
     if (isBuyer($user)) {
         $sql .= " AND LOWER(client_email) = :email";

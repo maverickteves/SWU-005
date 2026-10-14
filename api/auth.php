@@ -216,6 +216,10 @@ function handleAuthAction($db) {
             if (empty($name) || empty($email) || empty($licenseNo) || strlen($password) < 8) {
                 errorResponse("Name, email, license number, and a password of at least 8 characters are required.", 400);
             }
+            $licenseNo = normalizeLicenseNo($licenseNo);
+            if (!isValidLicenseNo($licenseNo)) {
+                errorResponse("License number must look like PRC-REB-0012345: PRC-REB- followed by exactly 7 digits.", 400);
+            }
 
             // Check if agent account already exists
             $stmt = $db->prepare("SELECT * FROM users WHERE LOWER(email) = :email OR (license_no != '' AND LOWER(license_no) = :license) LIMIT 1");

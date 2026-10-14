@@ -9,7 +9,7 @@ require_once __DIR__ . '/../config/formatters.php';
 
 $db = getDatabaseConnection();
 $method = $_SERVER['REQUEST_METHOD'];
-// Agents see every lead; buyers only the conversations they started
+// Agents see leads on their own listings; buyers only the conversations they started
 $user = requireUser($db);
 
 switch ($method) {
@@ -30,10 +30,14 @@ switch ($method) {
 }
 
 /**
- * Stops a buyer from reading or writing to someone else's inquiry thread.
+ * Stops a buyer from reading or writing to someone else's inquiry thread,
+ * and an agent from a thread about another agent's listing.
  */
-function requireInquiryAccess($user, $inquiry) {
+function requireInquiryAccess($db, $user, $inquiry) {
     if (isBuyer($user) && !sameEmail($inquiry['sender_email'], $user['email'])) {
+        errorResponse("Inquiry not found", 404);
+    }
+    if (isAgent($user) && !agentOwnsProperty($db, $user, $inquiry['property_id'])) {
         errorResponse("Inquiry not found", 404);
     }
 }
@@ -47,7 +51,7 @@ function handleGetInquiries($db, $user) {
         if (!$inq) {
             errorResponse("Inquiry not found", 404);
         }
-        requireInquiryAccess($user, $inq);
+        requireInquiryAccess($db, $user, $inq);
 
         // Fetch messages
         $mStmt = $db->prepare("SELECT * FROM inquiry_messages WHERE inquiry_id = :id ORDER BY created_at ASC");
@@ -60,6 +64,10 @@ function handleGetInquiries($db, $user) {
     // List inquiries with messages
     if (isBuyer($user)) {
         $stmt = $db->prepare("SELECT * FROM inquiries WHERE LOWER(sender_email) = :email ORDER BY updated_at DESC");
+        $stmt->execute(['email' => strtolower($user['email'])]);
+    } elseif (isAgent($user)) {
+        $stmt = $db->prepare("SELECT i.* FROM inquiries i JOIN properties p ON p.id = i.property_id
+                              WHERE LOWER(p.agent_email) = :email ORDER BY i.updated_at DESC");
         $stmt->execute(['email' => strtolower($user['email'])]);
     } else {
         $stmt = $db->query("SELECT * FROM inquiries ORDER BY updated_at DESC");
@@ -130,7 +138,7 @@ function handleCreateOrReplyInquiry($db, $user) {
         if (!$inquiry) {
             errorResponse("Inquiry thread not found", 404);
         }
-        requireInquiryAccess($user, $inquiry);
+        requireInquiryAccess($db, $user, $inquiry);
 
         // Insert new message
         $msgId = 'msg_' . bin2hex(random_bytes(6));
@@ -259,14 +267,14 @@ function handleUpdateInquiryStatus($db, $user) {
     }
 
     if ($action === 'mark_read') {
-        if (isBuyer($user)) {
+        if ($user !== null) {
             $check = $db->prepare("SELECT * FROM inquiries WHERE id = :id");
             $check->execute(['id' => $id]);
             $inquiry = $check->fetch();
             if (!$inquiry) {
                 errorResponse("Inquiry not found", 404);
             }
-            requireInquiryAccess($user, $inquiry);
+            requireInquiryAccess($db, $user, $inquiry);
         }
         $stmt = $db->prepare("UPDATE inquiries SET is_unread = FALSE WHERE id = :id");
         $stmt->execute(['id' => $id]);

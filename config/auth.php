@@ -215,3 +215,29 @@ function clearLoginFailures($db, $key) {
         return null;
     }, null);
 }
+
+/**
+ * PRC real estate broker license number, e.g. PRC-REB-0094821.
+ * The app (LicenseNumber.kt) and the database (users_license_format) use the same format.
+ */
+function normalizeLicenseNo($value) {
+    return strtoupper(preg_replace('/\s+/', '', (string)$value));
+}
+
+function isValidLicenseNo($value) {
+    return preg_match('/^PRC-REB-[0-9]{7}$/', normalizeLicenseNo($value)) === 1;
+}
+
+/**
+ * True when the listing was posted by this agent (its agent_email is theirs).
+ * Agents only see and change chats, bookings and listings for their own listings.
+ */
+function agentOwnsProperty($db, $user, $propertyId) {
+    if (!isAgent($user) || $propertyId === null || $propertyId === '') {
+        return false;
+    }
+    $stmt = $db->prepare("SELECT agent_email FROM properties WHERE id = :id");
+    $stmt->execute(['id' => $propertyId]);
+    $owner = $stmt->fetchColumn();
+    return $owner !== false && sameEmail($owner, $user['email']);
+}

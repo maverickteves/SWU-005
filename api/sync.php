@@ -21,11 +21,12 @@ if ($method === 'GET') {
 }
 
 function handleGetFullSyncState($db, $user) {
-    // Agents get everything. Buyers get their own records. Guests get only public listings
-    // once AUTH_REQUIRED is on; until then they get everything, as older app builds expect.
-    $seesAll = isAgent($user) || ($user === null && !authRequired());
+    // Agents get records for their own listings. Buyers get their own records. Guests get only
+    // public listings once AUTH_REQUIRED is on; until then they get everything, as older app builds expect.
+    $seesAll = $user === null && !authRequired();
     $isBuyer = isBuyer($user);
-    $email = $isBuyer ? strtolower($user['email']) : null;
+    $isAgent = isAgent($user);
+    $email = $user !== null ? strtolower($user['email']) : null;
 
     // 1. Properties
     $pStmt = $db->query("SELECT * FROM properties ORDER BY created_at DESC");
@@ -35,6 +36,11 @@ function handleGetFullSyncState($db, $user) {
     $appointments = [];
     if ($seesAll) {
         $aStmt = $db->query("SELECT * FROM viewing_appointments ORDER BY created_timestamp DESC");
+        $appointments = array_map('formatAppointmentRow', $aStmt->fetchAll());
+    } elseif ($isAgent) {
+        $aStmt = $db->prepare("SELECT * FROM viewing_appointments WHERE property_id IN
+                               (SELECT id FROM properties WHERE LOWER(agent_email) = :email) ORDER BY created_timestamp DESC");
+        $aStmt->execute(['email' => $email]);
         $appointments = array_map('formatAppointmentRow', $aStmt->fetchAll());
     } elseif ($isBuyer) {
         $aStmt = $db->prepare("SELECT * FROM viewing_appointments WHERE LOWER(client_email) = :email ORDER BY created_timestamp DESC");
@@ -46,6 +52,11 @@ function handleGetFullSyncState($db, $user) {
     $inquiryRows = [];
     if ($seesAll) {
         $inquiryRows = $db->query("SELECT * FROM inquiries ORDER BY updated_at DESC")->fetchAll();
+    } elseif ($isAgent) {
+        $iStmt = $db->prepare("SELECT i.* FROM inquiries i JOIN properties p ON p.id = i.property_id
+                               WHERE LOWER(p.agent_email) = :email ORDER BY i.updated_at DESC");
+        $iStmt->execute(['email' => $email]);
+        $inquiryRows = $iStmt->fetchAll();
     } elseif ($isBuyer) {
         $iStmt = $db->prepare("SELECT * FROM inquiries WHERE LOWER(sender_email) = :email ORDER BY updated_at DESC");
         $iStmt->execute(['email' => $email]);
@@ -58,9 +69,9 @@ function handleGetFullSyncState($db, $user) {
         $inquiries[] = formatInquiryWithMessages($inq, $mStmt->fetchAll());
     }
 
-    // 4. Notifications (same rules as notifications.php)
+    // 4. Notifications (same rules as notifications.php; agents still get every notification)
     $notifications = [];
-    if ($seesAll) {
+    if ($seesAll || $isAgent) {
         $nStmt = $db->query("SELECT * FROM notifications ORDER BY created_at DESC");
         $notifications = array_map('formatNotificationRow', $nStmt->fetchAll());
     } elseif ($isBuyer) {
@@ -107,6 +118,17 @@ function handlePostSync($db, $user) {
     if (!empty($input['properties']) && is_array($input['properties'])) {
         foreach ($input['properties'] as $prop) {
             $id = $prop['id'] ?? ('prop_' . bin2hex(random_bytes(6)));
+            if ($user !== null) {
+                // A signed-in agent only writes their own listings, never another agent's
+                $ownerStmt = $db->prepare("SELECT agent_email FROM properties WHERE id = :id");
+                $ownerStmt->execute(['id' => $id]);
+                $owner = $ownerStmt->fetchColumn();
+                if ($owner !== false && !sameEmail($owner, $user['email'])) {
+                    continue;
+                }
+                $prop['agentEmail'] = $user['email'];
+                $prop['agentName'] = $user['name'];
+            }
             $sql = "INSERT INTO properties (
                 id, title, address, city_state_zip, price, price_formatted, is_rental,
                 beds, baths, sqft, property_type, description, image_res_id, media_uris,

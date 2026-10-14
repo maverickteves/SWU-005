@@ -164,6 +164,19 @@ function handleCreateProperty($db) {
     $agentPhone = trim($input['agentPhone'] ?? '+63 917 555 0192');
     $agentEmail = trim($input['agentEmail'] ?? 'sarah.jenkins@estateflow.com');
 
+    // A signed-in agent posts listings under their own name, and can't edit another agent's listing
+    $user = currentUser($db);
+    if (isAgent($user)) {
+        $ownerStmt = $db->prepare("SELECT agent_email FROM properties WHERE id = :id");
+        $ownerStmt->execute(['id' => $id]);
+        $owner = $ownerStmt->fetchColumn();
+        if ($owner !== false && !sameEmail($owner, $user['email'])) {
+            errorResponse("This listing belongs to another agent.", 403);
+        }
+        $agentEmail = $user['email'];
+        $agentName = $user['name'];
+    }
+
     $sql = "INSERT INTO properties (
         id, title, address, city_state_zip, price, price_formatted, is_rental,
         beds, baths, sqft, property_type, description, image_res_id, media_uris,
@@ -293,6 +306,11 @@ function handleDeleteProperty($db) {
 
     if (!$title) {
         errorResponse("Property '$id' not found in PostgreSQL database. It may have only been created locally or was already deleted.", 404);
+    }
+
+    $user = currentUser($db);
+    if (isAgent($user) && !agentOwnsProperty($db, $user, $id)) {
+        errorResponse("This listing belongs to another agent.", 403);
     }
 
     $db->beginTransaction();
