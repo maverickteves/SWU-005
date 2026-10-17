@@ -1,5 +1,12 @@
 # EstateFlow
 
+## Group Members
+
+- Lim, Ryan James M.
+- Salazar, Lhord Donnie D.
+- Sasing, Dan Joseph
+- Teves, Maverick B.
+
 This repository contains a backend service for a real-estate application. It is a PHP-based API project intended to support data operations for listings, appointments, inquiries, and user-related flows.
 
 ## Purpose
