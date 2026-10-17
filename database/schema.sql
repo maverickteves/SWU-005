@@ -1,25 +1,12 @@
--- =========================================================================
--- Estateflow Real Estate Platform - PostgreSQL Database Schema
--- Compatible with PostgreSQL 12+ and XAMPP PHP PDO pgsql
--- =========================================================================
-
--- Optional: Create Database if running manually in psql
--- CREATE DATABASE estateflow_db;
--- \c estateflow_db;
-
--- Enable UUID extension if available
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- -------------------------------------------------------------------------
--- 1. Table: users (Clients, Buyers, Licensed Agents, Brokers)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS users CASCADE;
 CREATE TABLE users (
     id VARCHAR(100) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(50) DEFAULT '',
-    role VARCHAR(20) DEFAULT 'BUYER', -- 'BUYER' or 'AGENT'
+    role VARCHAR(20) DEFAULT 'BUYER',
     license_no VARCHAR(100) DEFAULT '',
     agency VARCHAR(255) DEFAULT '',
     professional_role VARCHAR(100) DEFAULT 'Licensed Agent',
@@ -31,9 +18,6 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
 
--- -------------------------------------------------------------------------
--- 2. Table: agent_profiles (Public Agent Profiles & Stats)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS agent_profiles CASCADE;
 CREATE TABLE agent_profiles (
     id VARCHAR(100) PRIMARY KEY,
@@ -50,9 +34,6 @@ CREATE TABLE agent_profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- -------------------------------------------------------------------------
--- 3. Table: properties (Real Estate Listings)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS properties CASCADE;
 CREATE TABLE properties (
     id VARCHAR(100) PRIMARY KEY,
@@ -68,7 +49,7 @@ CREATE TABLE properties (
     property_type VARCHAR(100) NOT NULL DEFAULT 'Condominium',
     description TEXT,
     image_res_id INT DEFAULT 0,
-    media_uris TEXT DEFAULT '[]', -- JSON array of image/video URIs
+    media_uris TEXT DEFAULT '[]',
     is_favorite BOOLEAN DEFAULT FALSE,
     status VARCHAR(50) DEFAULT 'Active',
     available_dates TEXT DEFAULT '["Mon, Oct 14", "Tue, Oct 15", "Wed, Oct 16", "Thu, Oct 17"]',
@@ -87,9 +68,6 @@ CREATE INDEX idx_properties_type ON properties(property_type);
 CREATE INDEX idx_properties_price ON properties(price);
 CREATE INDEX idx_properties_is_rental ON properties(is_rental);
 
--- -------------------------------------------------------------------------
--- 4. Table: viewing_appointments (Client Bookings for In-person Tours)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS viewing_appointments CASCADE;
 CREATE TABLE viewing_appointments (
     id VARCHAR(100) PRIMARY KEY,
@@ -102,7 +80,7 @@ CREATE TABLE viewing_appointments (
     date VARCHAR(100) NOT NULL,
     time_slot VARCHAR(50) NOT NULL,
     type VARCHAR(50) DEFAULT 'Viewing',
-    status VARCHAR(50) DEFAULT 'UPCOMING', -- UPCOMING, COMPLETED, PENDING, CANCELLED
+    status VARCHAR(50) DEFAULT 'UPCOMING',
     notes TEXT,
     created_timestamp BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000)::BIGINT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -111,9 +89,6 @@ CREATE TABLE viewing_appointments (
 CREATE INDEX idx_appointments_client_email ON viewing_appointments(client_email);
 CREATE INDEX idx_appointments_status ON viewing_appointments(status);
 
--- -------------------------------------------------------------------------
--- 5. Table: inquiries (Lead Inquiries & Support)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS inquiries CASCADE;
 CREATE TABLE inquiries (
     id VARCHAR(100) PRIMARY KEY,
@@ -130,14 +105,11 @@ CREATE TABLE inquiries (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- -------------------------------------------------------------------------
--- 6. Table: inquiry_messages (Chat thread for each inquiry)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS inquiry_messages CASCADE;
 CREATE TABLE inquiry_messages (
     id VARCHAR(100) PRIMARY KEY,
     inquiry_id VARCHAR(100) NOT NULL REFERENCES inquiries(id) ON DELETE CASCADE,
-    sender VARCHAR(50) NOT NULL, -- 'user', 'agent', 'client'
+    sender VARCHAR(50) NOT NULL,
     text TEXT NOT NULL,
     time VARCHAR(50) DEFAULT 'Just now',
     is_from_me BOOLEAN DEFAULT FALSE,
@@ -146,9 +118,6 @@ CREATE TABLE inquiry_messages (
 
 CREATE INDEX idx_inquiry_messages_inquiry_id ON inquiry_messages(inquiry_id);
 
--- -------------------------------------------------------------------------
--- 7. Table: notifications (In-app alerts and updates)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS notifications CASCADE;
 CREATE TABLE notifications (
     id VARCHAR(100) PRIMARY KEY,
@@ -163,11 +132,6 @@ CREATE TABLE notifications (
 
 CREATE INDEX idx_notifications_is_read ON notifications(is_read);
 
--- =========================================================================
--- SEED INITIAL DATA
--- =========================================================================
-
--- Seed Default Agent Profile
 INSERT INTO agent_profiles (id, name, title, license_no, phone, email, rating, reviews_count, total_sales_volume, active_listings_count, bio)
 VALUES (
     'agent_verified_sarah',
@@ -183,7 +147,6 @@ VALUES (
     'Specializing in premier residential condominiums, townhomes, and luxury family estates across Cebu City, Cebu IT Park, and Cebu Business Park.'
 ) ON CONFLICT (id) DO NOTHING;
 
--- Seed Default Agent User Account (Default password: password123)
 INSERT INTO users (id, name, email, phone, role, license_no, agency, professional_role, password_hash)
 VALUES (
     'agent_verified_sarah',
@@ -194,10 +157,9 @@ VALUES (
     'PRC-REB-0094821',
     'Estateflow Luxury Realty',
     'Premier Real Estate Broker',
-    '$2y$10$TcyIP70/GCakorNWPAfg6uG2Us5AWCE0mEPIwUnLA8zCz5.Qh0haq' -- Hash of 'password123'
+    '$2y$10$TcyIP70/GCakorNWPAfg6uG2Us5AWCE0mEPIwUnLA8zCz5.Qh0haq'
 ) ON CONFLICT (id) DO NOTHING;
 
--- Seed Default Client User Account (Default password: password123)
 INSERT INTO users (id, name, email, phone, role, password_hash)
 VALUES (
     'client_alex_turner',
@@ -205,10 +167,9 @@ VALUES (
     'alex.turner@example.com',
     '+1 (555) 019-8234',
     'BUYER',
-    '$2y$10$TcyIP70/GCakorNWPAfg6uG2Us5AWCE0mEPIwUnLA8zCz5.Qh0haq' -- Hash of 'password123'
+    '$2y$10$TcyIP70/GCakorNWPAfg6uG2Us5AWCE0mEPIwUnLA8zCz5.Qh0haq'
 ) ON CONFLICT (id) DO NOTHING;
 
--- Seed 5 Initial Luxury Properties
 INSERT INTO properties (
     id, title, address, city_state_zip, price, price_formatted, is_rental, beds, baths, sqft,
     property_type, description, media_uris, is_favorite, status, available_dates, available_time_slots,
@@ -340,7 +301,6 @@ INSERT INTO properties (
     'sarah.jenkins@estateflow.com'
 ) ON CONFLICT (id) DO NOTHING;
 
--- Seed Sample Viewing Appointments
 INSERT INTO viewing_appointments (
     id, property_id, property_title, property_address, client_name, client_phone, client_email,
     date, time_slot, type, status, notes
@@ -374,7 +334,6 @@ INSERT INTO viewing_appointments (
     'Client wants sunset viewing to assess evening bay lighting.'
 ) ON CONFLICT (id) DO NOTHING;
 
--- Seed Sample Inquiries & Messages
 INSERT INTO inquiries (
     id, property_id, property_title, property_address, sender_name, sender_email, sender_phone,
     message, time_ago, is_unread
@@ -411,7 +370,6 @@ VALUES
     TRUE
 ) ON CONFLICT (id) DO NOTHING;
 
--- Seed Sample Notifications
 INSERT INTO notifications (id, title, message, timestamp_formatted, type, is_read, target_id)
 VALUES
 (
@@ -433,13 +391,10 @@ VALUES
     'inq_demo_1'
 ) ON CONFLICT (id) DO NOTHING;
 
--- -------------------------------------------------------------------------
--- 8. Table: login_attempts (failed sign-ins, used to slow down password guessing)
--- -------------------------------------------------------------------------
 DROP TABLE IF EXISTS login_attempts CASCADE;
 CREATE TABLE login_attempts (
     id BIGSERIAL PRIMARY KEY,
-    attempt_key VARCHAR(300) NOT NULL, -- e.g. 'client:jane@example.com'
+    attempt_key VARCHAR(300) NOT NULL,
     attempted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
