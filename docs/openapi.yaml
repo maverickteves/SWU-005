@@ -176,9 +176,9 @@ paths:
       operationId: getProperties
       security: [{}]
       parameters:
-        - { name: id, in: query, description: Return just this listing, schema: { type: string }, example: prop_1a2b3c4d5e6f }
+        - { name: id, in: query, description: "Return just this listing (for example prop_pinecrest). Leave empty to list all.", schema: { type: string } }
         - { name: search, in: query, description: "Text in title, address, city or description", schema: { type: string } }
-        - { name: category, in: query, description: "Property type, or All", schema: { type: string, example: Condominium } }
+        - { name: category, in: query, description: "Property type (for example Condominium), or All", schema: { type: string } }
         - { name: min_price, in: query, schema: { type: integer } }
         - { name: max_price, in: query, schema: { type: integer } }
         - { name: beds, in: query, description: At least this many bedrooms, schema: { type: number } }
@@ -407,10 +407,10 @@ paths:
             examples:
               new_message:
                 summary: Buyer sends a message
-                value: { propertyId: prop_1a2b3c4d5e6f, message: Is this unit still available?, senderName: Alex Turner, senderEmail: alex.turner@example.com, senderPhone: "+63 917 000 0000" }
+                value: { propertyId: prop_skyline, message: Is the penthouse still available?, senderName: Alex Turner, senderEmail: alex.turner@example.com, senderPhone: "+1 (555) 019-8234" }
               reply:
                 summary: Reply in a conversation (action=reply)
-                value: { inquiryId: inq_1a2b3c4d5e6f, replyText: "Yes, it is. Would you like to book a viewing?" }
+                value: { inquiryId: inq_demo_1, replyText: "Hi Marcus! There are no HOA fees on this parcel." }
       responses:
         "201":
           description: Conversation (new message) or the saved reply
@@ -499,8 +499,8 @@ paths:
               required: [title, message]
               properties:
                 id: { type: string, description: Generated if left out }
-                title: { type: string, example: Price drop }
-                message: { type: string, example: "Skyline Loft is now ₱8,500,000." }
+                title: { type: string, example: Price Drop }
+                message: { type: string, example: "Skyline Penthouse at The Zenith is now ₱2,000,000." }
                 type: { $ref: "#/components/schemas/NotificationType" }
                 targetId: { type: string, nullable: true, description: "Related listing, booking or conversation id" }
       responses:
@@ -645,7 +645,7 @@ components:
     User:
       type: object
       properties:
-        id: { type: string, example: client_1a2b3c4d }
+        id: { type: string, example: client_alex_turner }
         name: { type: string, example: Alex Turner }
         email: { type: string, format: email, example: alex.turner@example.com }
         phone: { type: string }
@@ -737,8 +737,8 @@ components:
         phone: { type: string, example: "+63 917 555 0192" }
         email: { type: string, format: email, example: sarah.jenkins@estateflow.com }
         rating: { type: number, minimum: 0, maximum: 5, example: 4.9 }
-        reviewsCount: { type: integer, example: 128 }
-        totalSalesVolume: { type: string, example: ₱450M }
+        reviewsCount: { type: integer, example: 124 }
+        totalSalesVolume: { type: string, example: ₱48.2M }
         activeListingsCount: { type: integer }
         bio: { type: string }
 
@@ -749,17 +749,17 @@ components:
     Property:
       type: object
       properties:
-        id: { type: string, example: prop_1a2b3c4d5e6f }
-        title: { type: string, example: Skyline Loft }
-        address: { type: string, example: 12 Osmeña Blvd }
-        cityStateZip: { type: string, example: "Cebu City, Philippines" }
-        price: { type: integer, example: 8500000 }
-        priceFormatted: { type: string, example: "₱8,500,000" }
+        id: { type: string, example: prop_skyline }
+        title: { type: string, example: Skyline Penthouse at The Zenith }
+        address: { type: string, example: "450 Marina Boulevard, Penthouse 42B" }
+        cityStateZip: { type: string, example: "San Francisco, CA 94123" }
+        price: { type: integer, example: 2150000 }
+        priceFormatted: { type: string, example: "₱2,150,000" }
         isRental: { type: boolean }
-        beds: { type: number, example: 2 }
-        baths: { type: number, example: 2 }
-        sqft: { type: integer, example: 950 }
-        propertyType: { type: string, example: Condominium }
+        beds: { type: number, example: 3 }
+        baths: { type: number, example: 3 }
+        sqft: { type: integer, example: 2400 }
+        propertyType: { type: string, example: Penthouse }
         description: { type: string }
         imageResId: { type: integer, description: Built-in app image (0 = none) }
         mediaUris:
@@ -768,9 +768,9 @@ components:
           description: Photo or video links (currently content:// links from the agent's phone)
         isFavorite: { type: boolean }
         status: { $ref: "#/components/schemas/PropertyStatus" }
-        availableDates: { type: array, items: { type: string }, example: ["Mon, Oct 14", "Tue, Oct 15"] }
-        availableTimeSlots: { type: array, items: { type: string }, example: ["10:00 AM", "1:30 PM"] }
-        amenities: { type: array, items: { type: string }, example: [Pool, Gym] }
+        availableDates: { type: array, items: { type: string }, example: ["Mon, Oct 14", "Wed, Oct 16", "Fri, Oct 18", "Sat, Oct 19"] }
+        availableTimeSlots: { type: array, items: { type: string }, example: ["11:00 AM", "2:00 PM", "4:30 PM"] }
+        amenities: { type: array, items: { type: string }, example: [Private Sky Terrace, Concierge 24/7, Valet Parking] }
         yearBuilt: { type: integer, example: 2022 }
         agentName: { type: string, example: Sarah Jenkins }
         agentTitle: { type: string }
@@ -783,8 +783,8 @@ components:
       description: Same fields as Property. Only title, address and price are required; the rest have defaults. A signed-in agent's own name and email replace agentName and agentEmail.
       properties:
         id: { type: string, description: Generated if left out; an existing id is overwritten }
-        title: { type: string, example: Skyline Loft }
-        address: { type: string, example: 12 Osmeña Blvd }
+        title: { type: string, example: Skyline Penthouse at The Zenith }
+        address: { type: string, example: "450 Marina Boulevard, Penthouse 42B" }
         cityStateZip: { type: string, default: "Cebu City, Philippines" }
         price: { type: integer, minimum: 0, example: 8500000 }
         priceFormatted: { type: string, description: Built from price if left out }
@@ -814,15 +814,15 @@ components:
     Appointment:
       type: object
       properties:
-        id: { type: string, example: appt_1a2b3c4d5e6f }
+        id: { type: string, example: appt_demo_2 }
         propertyId: { type: string }
         propertyTitle: { type: string }
         propertyAddress: { type: string }
         clientName: { type: string, example: Alex Turner }
         clientPhone: { type: string }
         clientEmail: { type: string, format: email }
-        date: { type: string, example: "Mon, Oct 14" }
-        timeSlot: { type: string, example: "10:00 AM" }
+        date: { type: string, example: "Wed, Oct 16" }
+        timeSlot: { type: string, example: "4:30 PM" }
         type: { type: string, example: Viewing }
         status: { $ref: "#/components/schemas/AppointmentStatus" }
         notes: { type: string }
@@ -833,14 +833,14 @@ components:
       required: [propertyId, date, timeSlot]
       properties:
         id: { type: string, description: Generated if left out }
-        propertyId: { type: string, example: prop_1a2b3c4d5e6f }
+        propertyId: { type: string, example: prop_skyline }
         propertyTitle: { type: string, description: Looked up from the listing if left out }
         propertyAddress: { type: string }
         clientName: { type: string, example: Alex Turner }
         clientPhone: { type: string }
         clientEmail: { type: string, format: email, description: Replaced by the signed-in buyer's email }
-        date: { type: string, example: "Mon, Oct 14" }
-        timeSlot: { type: string, example: "10:00 AM" }
+        date: { type: string, example: "Wed, Oct 16" }
+        timeSlot: { type: string, example: "4:30 PM" }
         type: { type: string, default: Viewing }
         status: { $ref: "#/components/schemas/AppointmentStatus" }
         notes: { type: string }
@@ -849,7 +849,7 @@ components:
     Message:
       type: object
       properties:
-        id: { type: string, example: msg_1a2b3c4d5e6f }
+        id: { type: string, example: msg_demo_1_1 }
         sender: { type: string, enum: [user, agent, client] }
         text: { type: string, maxLength: 5000 }
         time: { type: string, example: Just now }
@@ -858,7 +858,7 @@ components:
     Inquiry:
       type: object
       properties:
-        id: { type: string, example: inq_1a2b3c4d5e6f }
+        id: { type: string, example: inq_demo_1 }
         propertyId: { type: string }
         propertyTitle: { type: string }
         propertyAddress: { type: string }
@@ -911,7 +911,7 @@ components:
     Notification:
       type: object
       properties:
-        id: { type: string, example: notif_1a2b3c4d5e6f }
+        id: { type: string, example: notif_demo_1 }
         title: { type: string }
         message: { type: string }
         timestampFormatted: { type: string, example: Just now }

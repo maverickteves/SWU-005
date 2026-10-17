@@ -320,11 +320,10 @@
           {
             "name": "id",
             "in": "query",
-            "description": "Return just this listing",
+            "description": "Return just this listing (for example prop_pinecrest). Leave empty to list all.",
             "schema": {
               "type": "string"
-            },
-            "example": "prop_1a2b3c4d5e6f"
+            }
           },
           {
             "name": "search",
@@ -337,10 +336,9 @@
           {
             "name": "category",
             "in": "query",
-            "description": "Property type, or All",
+            "description": "Property type (for example Condominium), or All",
             "schema": {
-              "type": "string",
-              "example": "Condominium"
+              "type": "string"
             }
           },
           {
@@ -842,18 +840,18 @@
                 "new_message": {
                   "summary": "Buyer sends a message",
                   "value": {
-                    "propertyId": "prop_1a2b3c4d5e6f",
-                    "message": "Is this unit still available?",
+                    "propertyId": "prop_skyline",
+                    "message": "Is the penthouse still available?",
                     "senderName": "Alex Turner",
                     "senderEmail": "alex.turner@example.com",
-                    "senderPhone": "+63 917 000 0000"
+                    "senderPhone": "+1 (555) 019-8234"
                   }
                 },
                 "reply": {
                   "summary": "Reply in a conversation (action=reply)",
                   "value": {
-                    "inquiryId": "inq_1a2b3c4d5e6f",
-                    "replyText": "Yes, it is. Would you like to book a viewing?"
+                    "inquiryId": "inq_demo_1",
+                    "replyText": "Hi Marcus! There are no HOA fees on this parcel."
                   }
                 }
               }
@@ -1068,11 +1066,11 @@
                   },
                   "title": {
                     "type": "string",
-                    "example": "Price drop"
+                    "example": "Price Drop"
                   },
                   "message": {
                     "type": "string",
-                    "example": "Skyline Loft is now ₱8,500,000."
+                    "example": "Skyline Penthouse at The Zenith is now ₱2,000,000."
                   },
                   "type": {
                     "$ref": "#/components/schemas/NotificationType"
@@ -1364,7 +1362,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "client_1a2b3c4d"
+            "example": "client_alex_turner"
           },
           "name": {
             "type": "string",
@@ -1613,11 +1611,11 @@
           },
           "reviewsCount": {
             "type": "integer",
-            "example": 128
+            "example": 124
           },
           "totalSalesVolume": {
             "type": "string",
-            "example": "₱450M"
+            "example": "₱48.2M"
           },
           "activeListingsCount": {
             "type": "integer"
@@ -1642,46 +1640,46 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "prop_1a2b3c4d5e6f"
+            "example": "prop_skyline"
           },
           "title": {
             "type": "string",
-            "example": "Skyline Loft"
+            "example": "Skyline Penthouse at The Zenith"
           },
           "address": {
             "type": "string",
-            "example": "12 Osmeña Blvd"
+            "example": "450 Marina Boulevard, Penthouse 42B"
           },
           "cityStateZip": {
             "type": "string",
-            "example": "Cebu City, Philippines"
+            "example": "San Francisco, CA 94123"
           },
           "price": {
             "type": "integer",
-            "example": 8500000
+            "example": 2150000
           },
           "priceFormatted": {
             "type": "string",
-            "example": "₱8,500,000"
+            "example": "₱2,150,000"
           },
           "isRental": {
             "type": "boolean"
           },
           "beds": {
             "type": "number",
-            "example": 2
+            "example": 3
           },
           "baths": {
             "type": "number",
-            "example": 2
+            "example": 3
           },
           "sqft": {
             "type": "integer",
-            "example": 950
+            "example": 2400
           },
           "propertyType": {
             "type": "string",
-            "example": "Condominium"
+            "example": "Penthouse"
           },
           "description": {
             "type": "string"
@@ -1710,7 +1708,9 @@
             },
             "example": [
               "Mon, Oct 14",
-              "Tue, Oct 15"
+              "Wed, Oct 16",
+              "Fri, Oct 18",
+              "Sat, Oct 19"
             ]
           },
           "availableTimeSlots": {
@@ -1719,8 +1719,9 @@
               "type": "string"
             },
             "example": [
-              "10:00 AM",
-              "1:30 PM"
+              "11:00 AM",
+              "2:00 PM",
+              "4:30 PM"
             ]
           },
           "amenities": {
@@ -1729,8 +1730,9 @@
               "type": "string"
             },
             "example": [
-              "Pool",
-              "Gym"
+              "Private Sky Terrace",
+              "Concierge 24/7",
+              "Valet Parking"
             ]
           },
           "yearBuilt": {
@@ -1768,11 +1770,11 @@
           },
           "title": {
             "type": "string",
-            "example": "Skyline Loft"
+            "example": "Skyline Penthouse at The Zenith"
           },
           "address": {
             "type": "string",
-            "example": "12 Osmeña Blvd"
+            "example": "450 Marina Boulevard, Penthouse 42B"
           },
           "cityStateZip": {
             "type": "string",
@@ -1879,7 +1881,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "appt_1a2b3c4d5e6f"
+            "example": "appt_demo_2"
           },
           "propertyId": {
             "type": "string"
@@ -1903,11 +1905,11 @@
           },
           "date": {
             "type": "string",
-            "example": "Mon, Oct 14"
+            "example": "Wed, Oct 16"
           },
           "timeSlot": {
             "type": "string",
-            "example": "10:00 AM"
+            "example": "4:30 PM"
           },
           "type": {
             "type": "string",
@@ -1940,7 +1942,7 @@
           },
           "propertyId": {
             "type": "string",
-            "example": "prop_1a2b3c4d5e6f"
+            "example": "prop_skyline"
           },
           "propertyTitle": {
             "type": "string",
@@ -1963,11 +1965,11 @@
           },
           "date": {
             "type": "string",
-            "example": "Mon, Oct 14"
+            "example": "Wed, Oct 16"
           },
           "timeSlot": {
             "type": "string",
-            "example": "10:00 AM"
+            "example": "4:30 PM"
           },
           "type": {
             "type": "string",
@@ -1990,7 +1992,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "msg_1a2b3c4d5e6f"
+            "example": "msg_demo_1_1"
           },
           "sender": {
             "type": "string",
@@ -2019,7 +2021,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "inq_1a2b3c4d5e6f"
+            "example": "inq_demo_1"
           },
           "propertyId": {
             "type": "string"
@@ -2158,7 +2160,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "notif_1a2b3c4d5e6f"
+            "example": "notif_demo_1"
           },
           "title": {
             "type": "string"
