@@ -1,0 +1,2275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EstateFlow API Docs</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css">
+  <style>
+    body { margin: 0; background: #fafafa; }
+    .topbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+  <script>
+    // The OpenAPI spec is built into this page (from openapi.yaml) so it works without any extra files
+    var spec = {
+  "openapi": "3.0.3",
+  "info": {
+    "title": "EstateFlow API",
+    "version": "1.0",
+    "description": "REST API behind the EstateFlow Android app (PHP + PostgreSQL, hosted on Wasmer).\n\n**How the API is shaped.** Each resource is one PHP file under `/api/`. The HTTP method picks\nwhat happens, and some files also take an `action` (in the query string or the JSON body)\nto choose between several operations on the same method.\n\n**Signing in.** `POST /auth.php` returns a `token`. Send it on later calls as\n`Authorization: Bearer \u003ctoken>` (use the **Authorize** button). With a token, the server\nfilters data to the signed-in user: buyers see only their own bookings and chats, agents\nonly those on their own listings. Without a token, requests still work while the server\nsetting `AUTH_REQUIRED` is off, and then return everyone's data. A token that is present\nbut invalid or expired is always rejected with 401. No token is issued while the server\nsetting `AUTH_SECRET` is missing (`token` is then `null`).\n\n**Errors** always look like `{\"success\": false, \"error\": \"message\"}`.\n"
+  },
+  "servers": [
+    {
+      "url": "https://estateflow-backend.wasmer.app/api",
+      "description": "Live server (the one the app uses)"
+    },
+    {
+      "url": "https://estateflow-backend-maverickteves.wasmer.app/api",
+      "description": "Second Wasmer deployment"
+    },
+    {
+      "url": "http://localhost/estateflow-backend/api",
+      "description": "Local XAMPP"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Status",
+      "description": "Health check"
+    },
+    {
+      "name": "Auth",
+      "description": "Sign in, sign up, passwords and the agent profile"
+    },
+    {
+      "name": "Properties",
+      "description": "Listings"
+    },
+    {
+      "name": "Appointments",
+      "description": "Viewing bookings"
+    },
+    {
+      "name": "Inquiries",
+      "description": "Buyer to agent conversations"
+    },
+    {
+      "name": "Notifications",
+      "description": "Activity notifications"
+    },
+    {
+      "name": "Sync",
+      "description": "Bulk sync used by the app"
+    }
+  ],
+  "security": [
+    {},
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/status.php": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Check the server and database connection",
+        "operationId": "getStatus",
+        "security": [
+          {}
+        ],
+        "responses": {
+          "200": {
+            "description": "Server and database are up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "example": "OFFLINE"
+                        },
+                        "troubleshooting": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth.php": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Get an agent profile",
+        "description": "A signed-in agent gets their own profile. Everyone else gets the demo agent's\nprofile (Sarah Jenkins).\n",
+        "operationId": "getAgentProfile",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "agent_profile"
+              ],
+              "default": "agent_profile"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Sign in, sign up, change password or update agent profile",
+        "description": "Pick the operation with `action` (query string, or an `action` field in the body).\nEach one takes a different body; choose a matching example below.\n\n| action | Who | Body | Success |\n|---|---|---|---|\n| `client_login` (default) | buyer | email, password | 200 AuthResponse |\n| `client_signup` | buyer | name, email, password (8+), phone | 201 AuthResponse |\n| `agent_login` | agent | emailOrLicense, password | 200 AuthResponse |\n| `agent_signup` | agent | name, email, licenseNo, password (8+), agency, professionalRole | 201 AuthResponse |\n| `update_password` | anyone | email, currentPassword, newPassword (8+) | 200 PasswordUpdated |\n| `update_profile` | signed-in agent only | name, email, licenseNo, title | 200 AgentProfile |\n\nSign-in, sign-up and password changes are limited to 5 wrong attempts per account in\n15 minutes (then 429). Agent license numbers must be `PRC-REB-` plus 7 digits.\n",
+        "operationId": "authAction",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "client_login",
+                "client_signup",
+                "agent_login",
+                "agent_signup",
+                "update_password",
+                "update_profile"
+              ],
+              "default": "client_login"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ClientLogin"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ClientSignup"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AgentLogin"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AgentSignup"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UpdatePassword"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UpdateProfile"
+                  }
+                ]
+              },
+              "examples": {
+                "client_login": {
+                  "summary": "Buyer sign in (action=client_login)",
+                  "value": {
+                    "email": "alex.turner@example.com",
+                    "password": "your-password"
+                  }
+                },
+                "client_signup": {
+                  "summary": "Buyer sign up (action=client_signup)",
+                  "value": {
+                    "name": "Juan Dela Cruz",
+                    "email": "juan@example.com",
+                    "phone": "+63 917 000 0000",
+                    "password": "at-least-8-chars"
+                  }
+                },
+                "agent_login": {
+                  "summary": "Agent sign in (action=agent_login)",
+                  "value": {
+                    "emailOrLicense": "sarah.jenkins@estateflow.com",
+                    "password": "your-password"
+                  }
+                },
+                "agent_signup": {
+                  "summary": "Agent sign up (action=agent_signup)",
+                  "value": {
+                    "name": "Maria Santos",
+                    "email": "maria@example.com",
+                    "licenseNo": "PRC-REB-0012345",
+                    "agency": "Estateflow Luxury Realty",
+                    "professionalRole": "Licensed Real Estate Agent",
+                    "password": "at-least-8-chars"
+                  }
+                },
+                "update_password": {
+                  "summary": "Change password (action=update_password)",
+                  "value": {
+                    "email": "alex.turner@example.com",
+                    "currentPassword": "old-password",
+                    "newPassword": "new-password-8+"
+                  }
+                },
+                "update_profile": {
+                  "summary": "Update own agent profile (action=update_profile, token required)",
+                  "value": {
+                    "name": "Sarah Jenkins",
+                    "email": "sarah.jenkins@estateflow.com",
+                    "licenseNo": "PRC-REB-0012345",
+                    "title": "Premier Real Estate Broker • Cebu City Properties"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in, password changed, or profile updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AuthResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PasswordUpdated"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentProfile"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Account created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyAttempts"
+          }
+        }
+      }
+    },
+    "/properties.php": {
+      "get": {
+        "tags": [
+          "Properties"
+        ],
+        "summary": "List listings, or get one by id",
+        "description": "Public, no sign-in needed. With `id` it returns one Property; otherwise a list, newest first.",
+        "operationId": "getProperties",
+        "security": [
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Return just this listing",
+            "schema": {
+              "type": "string"
+            },
+            "example": "prop_1a2b3c4d5e6f"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Text in title, address, city or description",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "Property type, or All",
+            "schema": {
+              "type": "string",
+              "example": "Condominium"
+            }
+          },
+          {
+            "name": "min_price",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "max_price",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "beds",
+            "in": "query",
+            "description": "At least this many bedrooms",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One listing (with id) or a list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Property"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/Property"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Properties"
+        ],
+        "summary": "Create or save a listing (agents)",
+        "description": "Creates a listing, or overwrites it if `id` already exists. A signed-in agent's listing\nis always saved under their own name and email, and they can't overwrite another\nagent's listing (403). Also adds a \"New Property Published\" notification.\n\nWith `action=delete` this deletes instead (same as `DELETE`, pass `id`).\n",
+        "operationId": "createProperty",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "delete"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Only with action=delete",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PropertyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Deleted"
+          },
+          "201": {
+            "description": "Listing saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Property"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Properties"
+        ],
+        "summary": "Toggle favourite, or update a listing (agents)",
+        "description": "With `action=toggle_favorite` and `id`, flips the listing's favourite flag (one flag\nper listing, shared by everyone). Without an action, this is a full update and works\nlike `POST` (agents only).\n",
+        "operationId": "updateProperty",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "toggle_favorite"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PropertyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Favourite toggled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "isFavorite": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Listing updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Property"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Properties"
+        ],
+        "summary": "Delete a listing (agents)",
+        "description": "Deletes the listing, cancels its open viewings, and adds a \"Listing Removed\"\nnotification. A signed-in agent can only delete their own listings.\n",
+        "operationId": "deleteProperty",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Deleted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/appointments.php": {
+      "get": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "List viewing appointments",
+        "description": "Buyers get their own; agents get those on their own listings; no token gets all.",
+        "operationId": "getAppointments",
+        "parameters": [
+          {
+            "name": "client_email",
+            "in": "query",
+            "description": "Ignored for buyers",
+            "schema": {
+              "type": "string",
+              "format": "email"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AppointmentStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Appointments, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Appointment"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Book a viewing",
+        "description": "Books a viewing (or updates status, date, time and notes if `id` exists). A signed-in\nbuyer always books as themselves. Adds a \"Viewing Appointment Booked\" notification.\n",
+        "operationId": "bookAppointment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppointmentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Booked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Appointment"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Change an appointment's status",
+        "operationId": "updateAppointmentStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/AppointmentStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "appointment": {
+                      "$ref": "#/components/schemas/Appointment"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Appointments"
+        ],
+        "summary": "Delete an appointment",
+        "operationId": "deleteAppointment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessMessage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/inquiries.php": {
+      "get": {
+        "tags": [
+          "Inquiries"
+        ],
+        "summary": "List conversations, or get one by id",
+        "description": "Each inquiry is one conversation about one property with one buyer, including its\nmessages. Buyers get their own; agents get those on their own listings; no token gets all.\n",
+        "operationId": "getInquiries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Return just this conversation",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One conversation (with id) or a list, most recently active first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Inquiry"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/Inquiry"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Inquiries"
+        ],
+        "summary": "Start a conversation, or reply in one",
+        "description": "**New message from a buyer:** send `propertyId` and `message`. If this buyer already has\na conversation about the property, the message is added to it. Adds a \"New Lead\nInquiry\" notification. Returns the whole conversation.\n\n**Reply:** use `action=reply` with `inquiryId` and `replyText`. When signed in, the server\ndecides whether the reply is from the agent or the buyer; without a token `isAgent`\ndecides (default true).\n",
+        "operationId": "createOrReplyInquiry",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "reply"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/InquiryInput"
+                  },
+                  {
+                    "$ref": "#/components/schemas/InquiryReply"
+                  }
+                ]
+              },
+              "examples": {
+                "new_message": {
+                  "summary": "Buyer sends a message",
+                  "value": {
+                    "propertyId": "prop_1a2b3c4d5e6f",
+                    "message": "Is this unit still available?",
+                    "senderName": "Alex Turner",
+                    "senderEmail": "alex.turner@example.com",
+                    "senderPhone": "+63 917 000 0000"
+                  }
+                },
+                "reply": {
+                  "summary": "Reply in a conversation (action=reply)",
+                  "value": {
+                    "inquiryId": "inq_1a2b3c4d5e6f",
+                    "replyText": "Yes, it is. Would you like to book a viewing?"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Conversation (new message) or the saved reply",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Inquiry"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReplyResult"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Inquiries"
+        ],
+        "summary": "Mark a conversation as read",
+        "operationId": "markInquiryRead",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mark_read"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marked as read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "isUnread": {
+                      "type": "boolean",
+                      "example": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/notifications.php": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "List notifications",
+        "description": "Notifications have no recipient yet. Buyers get listing updates plus notifications about\ntheir own bookings and conversations; agents and no-token callers get every notification.\n",
+        "operationId": "getNotifications",
+        "responses": {
+          "200": {
+            "description": "Notifications, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Notification"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Mark one, or all, as read",
+        "operationId": "markNotificationRead",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mark_read",
+                "mark_all_read"
+              ],
+              "default": "mark_read"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "description": "Needed for mark_read",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marked as read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "isRead": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Create a notification",
+        "operationId": "createNotification",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "message"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Generated if left out"
+                  },
+                  "title": {
+                    "type": "string",
+                    "example": "Price drop"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": "Skyline Loft is now ₱8,500,000."
+                  },
+                  "type": {
+                    "$ref": "#/components/schemas/NotificationType"
+                  },
+                  "targetId": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Related listing, booking or conversation id"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notification"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/sync.php": {
+      "get": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Download everything the caller may see",
+        "description": "What the app downloads on Sync: all listings, plus appointments, conversations and\nnotifications filtered by who is signed in, plus an agent profile. With no token and\n`AUTH_REQUIRED` off, everything is returned.\n",
+        "operationId": "getSyncState",
+        "responses": {
+          "200": {
+            "description": "Full state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Upload listings and appointments, then download everything (agents)",
+        "description": "Saves the `properties` and `appointments` sent (by id; existing ones are overwritten),\nthen returns the same response as `GET`. A signed-in agent's listings are saved under\ntheir own name, and another agent's listings in the upload are skipped.\n",
+        "operationId": "postSync",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "properties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PropertyInput"
+                    }
+                  },
+                  "appointments": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AppointmentInput"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Full state after saving",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The `token` returned by a sign-in or sign-up in `POST /auth.php`. Valid for 30 days, or until the password changes."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Missing or invalid input",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Wrong email or password, or the token is missing (when AUTH_REQUIRED is on), invalid or expired",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Signed in, but not allowed (wrong role, or someone else's record)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooManyAttempts": {
+        "description": "Too many wrong attempts; wait 15 minutes",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Server or database error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Deleted": {
+        "description": "Deleted",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "example": true
+                },
+                "id": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "example": "Missing required fields."
+          }
+        }
+      },
+      "SuccessMessage": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "status": {
+            "type": "string",
+            "example": "ONLINE"
+          },
+          "backend": {
+            "type": "string"
+          },
+          "database": {
+            "type": "string",
+            "example": "PostgreSQL"
+          },
+          "postgres_version": {
+            "type": "string"
+          },
+          "server_time": {
+            "type": "string"
+          },
+          "table_stats": {
+            "type": "object",
+            "description": "Row count per table",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "example": {
+              "properties": 12,
+              "viewing_appointments": 4,
+              "inquiries": 3,
+              "inquiry_messages": 9,
+              "notifications": 20,
+              "users": 2,
+              "agent_profiles": 1
+            }
+          },
+          "endpoints": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "client_1a2b3c4d"
+          },
+          "name": {
+            "type": "string",
+            "example": "Alex Turner"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "alex.turner@example.com"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "BUYER",
+              "AGENT"
+            ]
+          },
+          "licenseNo": {
+            "type": "string",
+            "description": "Empty for buyers"
+          },
+          "agency": {
+            "type": "string"
+          },
+          "professionalRole": {
+            "type": "string",
+            "example": "Client Buyer"
+          }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "token": {
+            "type": "string",
+            "nullable": true,
+            "description": "Send as `Authorization Bearer`. Null while AUTH_SECRET is not set on the server."
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      },
+      "PasswordUpdated": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string",
+            "nullable": true,
+            "description": "New token; the old one stops working"
+          }
+        }
+      },
+      "ClientLogin": {
+        "title": "client_login",
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          }
+        }
+      },
+      "ClientSignup": {
+        "title": "client_signup",
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8
+          }
+        }
+      },
+      "AgentLogin": {
+        "title": "agent_login",
+        "type": "object",
+        "required": [
+          "emailOrLicense",
+          "password"
+        ],
+        "properties": {
+          "emailOrLicense": {
+            "type": "string",
+            "description": "Agent email or license number"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          }
+        }
+      },
+      "AgentSignup": {
+        "title": "agent_signup",
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "licenseNo",
+          "password"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "licenseNo": {
+            "type": "string",
+            "pattern": "^PRC-REB-[0-9]{7}$",
+            "example": "PRC-REB-0012345"
+          },
+          "agency": {
+            "type": "string",
+            "default": "Estateflow Luxury Realty"
+          },
+          "professionalRole": {
+            "type": "string",
+            "default": "Licensed Real Estate Agent"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8
+          }
+        }
+      },
+      "UpdatePassword": {
+        "title": "update_password",
+        "type": "object",
+        "required": [
+          "email",
+          "currentPassword",
+          "newPassword"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "currentPassword": {
+            "type": "string",
+            "format": "password"
+          },
+          "newPassword": {
+            "type": "string",
+            "format": "password",
+            "minLength": 8
+          }
+        }
+      },
+      "UpdateProfile": {
+        "title": "update_profile",
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "licenseNo"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "licenseNo": {
+            "type": "string",
+            "pattern": "^PRC-REB-[0-9]{7}$"
+          },
+          "title": {
+            "type": "string",
+            "default": "Licensed Real Estate Agent"
+          }
+        }
+      },
+      "AgentProfile": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Sarah Jenkins"
+          },
+          "title": {
+            "type": "string",
+            "example": "Premier Real Estate Broker • Cebu City Properties"
+          },
+          "licenseNo": {
+            "type": "string",
+            "example": "PRC-REB-0012345"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+63 917 555 0192"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "sarah.jenkins@estateflow.com"
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 5,
+            "example": 4.9
+          },
+          "reviewsCount": {
+            "type": "integer",
+            "example": 128
+          },
+          "totalSalesVolume": {
+            "type": "string",
+            "example": "₱450M"
+          },
+          "activeListingsCount": {
+            "type": "integer"
+          },
+          "bio": {
+            "type": "string"
+          }
+        }
+      },
+      "PropertyStatus": {
+        "type": "string",
+        "enum": [
+          "Active",
+          "New Listing",
+          "Under Offer",
+          "Pending",
+          "Sold"
+        ]
+      },
+      "Property": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "prop_1a2b3c4d5e6f"
+          },
+          "title": {
+            "type": "string",
+            "example": "Skyline Loft"
+          },
+          "address": {
+            "type": "string",
+            "example": "12 Osmeña Blvd"
+          },
+          "cityStateZip": {
+            "type": "string",
+            "example": "Cebu City, Philippines"
+          },
+          "price": {
+            "type": "integer",
+            "example": 8500000
+          },
+          "priceFormatted": {
+            "type": "string",
+            "example": "₱8,500,000"
+          },
+          "isRental": {
+            "type": "boolean"
+          },
+          "beds": {
+            "type": "number",
+            "example": 2
+          },
+          "baths": {
+            "type": "number",
+            "example": 2
+          },
+          "sqft": {
+            "type": "integer",
+            "example": 950
+          },
+          "propertyType": {
+            "type": "string",
+            "example": "Condominium"
+          },
+          "description": {
+            "type": "string"
+          },
+          "imageResId": {
+            "type": "integer",
+            "description": "Built-in app image (0 = none)"
+          },
+          "mediaUris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Photo or video links (currently content:// links from the agent's phone)"
+          },
+          "isFavorite": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PropertyStatus"
+          },
+          "availableDates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "Mon, Oct 14",
+              "Tue, Oct 15"
+            ]
+          },
+          "availableTimeSlots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "10:00 AM",
+              "1:30 PM"
+            ]
+          },
+          "amenities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "Pool",
+              "Gym"
+            ]
+          },
+          "yearBuilt": {
+            "type": "integer",
+            "example": 2022
+          },
+          "agentName": {
+            "type": "string",
+            "example": "Sarah Jenkins"
+          },
+          "agentTitle": {
+            "type": "string"
+          },
+          "agentPhone": {
+            "type": "string"
+          },
+          "agentEmail": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "PropertyInput": {
+        "type": "object",
+        "required": [
+          "title",
+          "address",
+          "price"
+        ],
+        "description": "Same fields as Property. Only title, address and price are required; the rest have defaults. A signed-in agent's own name and email replace agentName and agentEmail.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Generated if left out; an existing id is overwritten"
+          },
+          "title": {
+            "type": "string",
+            "example": "Skyline Loft"
+          },
+          "address": {
+            "type": "string",
+            "example": "12 Osmeña Blvd"
+          },
+          "cityStateZip": {
+            "type": "string",
+            "default": "Cebu City, Philippines"
+          },
+          "price": {
+            "type": "integer",
+            "minimum": 0,
+            "example": 8500000
+          },
+          "priceFormatted": {
+            "type": "string",
+            "description": "Built from price if left out"
+          },
+          "isRental": {
+            "type": "boolean",
+            "default": false
+          },
+          "beds": {
+            "type": "number",
+            "default": 1
+          },
+          "baths": {
+            "type": "number",
+            "default": 1
+          },
+          "sqft": {
+            "type": "integer",
+            "default": 500
+          },
+          "propertyType": {
+            "type": "string",
+            "default": "Condominium"
+          },
+          "description": {
+            "type": "string"
+          },
+          "imageResId": {
+            "type": "integer",
+            "default": 0
+          },
+          "mediaUris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "isFavorite": {
+            "type": "boolean",
+            "default": false
+          },
+          "status": {
+            "$ref": "#/components/schemas/PropertyStatus"
+          },
+          "availableDates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "availableTimeSlots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "amenities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "yearBuilt": {
+            "type": "integer",
+            "minimum": 1800,
+            "maximum": 2100
+          },
+          "agentName": {
+            "type": "string"
+          },
+          "agentTitle": {
+            "type": "string"
+          },
+          "agentPhone": {
+            "type": "string"
+          },
+          "agentEmail": {
+            "type": "string",
+            "format": "email"
+          }
+        }
+      },
+      "AppointmentStatus": {
+        "type": "string",
+        "enum": [
+          "UPCOMING",
+          "PENDING",
+          "COMPLETED",
+          "CANCELLED"
+        ]
+      },
+      "Appointment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "appt_1a2b3c4d5e6f"
+          },
+          "propertyId": {
+            "type": "string"
+          },
+          "propertyTitle": {
+            "type": "string"
+          },
+          "propertyAddress": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string",
+            "example": "Alex Turner"
+          },
+          "clientPhone": {
+            "type": "string"
+          },
+          "clientEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "date": {
+            "type": "string",
+            "example": "Mon, Oct 14"
+          },
+          "timeSlot": {
+            "type": "string",
+            "example": "10:00 AM"
+          },
+          "type": {
+            "type": "string",
+            "example": "Viewing"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppointmentStatus"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Booking time in milliseconds since 1970"
+          }
+        }
+      },
+      "AppointmentInput": {
+        "type": "object",
+        "required": [
+          "propertyId",
+          "date",
+          "timeSlot"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Generated if left out"
+          },
+          "propertyId": {
+            "type": "string",
+            "example": "prop_1a2b3c4d5e6f"
+          },
+          "propertyTitle": {
+            "type": "string",
+            "description": "Looked up from the listing if left out"
+          },
+          "propertyAddress": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string",
+            "example": "Alex Turner"
+          },
+          "clientPhone": {
+            "type": "string"
+          },
+          "clientEmail": {
+            "type": "string",
+            "format": "email",
+            "description": "Replaced by the signed-in buyer's email"
+          },
+          "date": {
+            "type": "string",
+            "example": "Mon, Oct 14"
+          },
+          "timeSlot": {
+            "type": "string",
+            "example": "10:00 AM"
+          },
+          "type": {
+            "type": "string",
+            "default": "Viewing"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppointmentStatus"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "msg_1a2b3c4d5e6f"
+          },
+          "sender": {
+            "type": "string",
+            "enum": [
+              "user",
+              "agent",
+              "client"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "time": {
+            "type": "string",
+            "example": "Just now"
+          },
+          "isFromMe": {
+            "type": "boolean",
+            "description": "True for agent messages"
+          }
+        }
+      },
+      "Inquiry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "inq_1a2b3c4d5e6f"
+          },
+          "propertyId": {
+            "type": "string"
+          },
+          "propertyTitle": {
+            "type": "string"
+          },
+          "propertyAddress": {
+            "type": "string"
+          },
+          "senderName": {
+            "type": "string",
+            "example": "Alex Turner"
+          },
+          "senderEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "senderPhone": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "Latest message text"
+          },
+          "timeAgo": {
+            "type": "string",
+            "example": "Just now"
+          },
+          "isUnread": {
+            "type": "boolean"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            }
+          }
+        }
+      },
+      "InquiryInput": {
+        "title": "new message",
+        "type": "object",
+        "required": [
+          "propertyId",
+          "message"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Used only when a new conversation is created"
+          },
+          "propertyId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "senderName": {
+            "type": "string"
+          },
+          "senderEmail": {
+            "type": "string",
+            "format": "email",
+            "description": "Replaced by the signed-in buyer's email"
+          },
+          "senderPhone": {
+            "type": "string"
+          },
+          "propertyTitle": {
+            "type": "string"
+          },
+          "propertyAddress": {
+            "type": "string"
+          }
+        }
+      },
+      "InquiryReply": {
+        "title": "reply",
+        "type": "object",
+        "required": [
+          "inquiryId",
+          "replyText"
+        ],
+        "properties": {
+          "inquiryId": {
+            "type": "string"
+          },
+          "replyText": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "isAgent": {
+            "type": "boolean",
+            "default": true,
+            "description": "Ignored when a token is sent"
+          }
+        }
+      },
+      "ReplyResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "sender": {
+            "type": "string",
+            "enum": [
+              "user",
+              "agent"
+            ]
+          }
+        }
+      },
+      "NotificationType": {
+        "type": "string",
+        "enum": [
+          "VIEWING_BOOKED",
+          "NEW_INQUIRY",
+          "PRICE_DROP",
+          "LISTING_UPDATE",
+          "SECURITY_ALERT"
+        ],
+        "default": "VIEWING_BOOKED"
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "notif_1a2b3c4d5e6f"
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "timestampFormatted": {
+            "type": "string",
+            "example": "Just now"
+          },
+          "type": {
+            "$ref": "#/components/schemas/NotificationType"
+          },
+          "isRead": {
+            "type": "boolean"
+          },
+          "targetId": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SyncState": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "database": {
+            "type": "string"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Property"
+            }
+          },
+          "appointments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Appointment"
+            }
+          },
+          "inquiries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Inquiry"
+            }
+          },
+          "notifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            }
+          },
+          "agentProfile": {
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentProfile"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+};
+
+    // When this page is served by the backend itself, list that server first
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      var here = location.origin + location.pathname.replace(/\/docs(\/.*)?$/, '') + '/api';
+      if (!spec.servers.some(function (s) { return s.url === here; })) {
+        spec.servers.unshift({ url: here, description: 'This server' });
+      }
+    }
+
+    window.ui = SwaggerUIBundle({
+      spec: spec,
+      dom_id: '#swagger-ui',
+      deepLinking: true,
+      docExpansion: 'list',
+      defaultModelsExpandDepth: 0,
+      persistAuthorization: true,
+      tryItOutEnabled: false,
+      validatorUrl: null
+    });
+  </script>
+</body>
+</html>
