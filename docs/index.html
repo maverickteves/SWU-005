@@ -14,28 +14,29 @@
   <div id="swagger-ui"></div>
   <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
   <script>
-    // The OpenAPI spec is built into this page (from openapi.yaml) so it works without any extra files
+    // Built-in copy of openapi.yaml, used when the page is opened as a file (no server)
     var spec = {
   "openapi": "3.0.3",
   "info": {
     "title": "EstateFlow API",
     "version": "1.0",
-    "description": "REST API behind the EstateFlow Android app (PHP + PostgreSQL, hosted on Wasmer).\n\n**How the API is shaped.** Each resource is one PHP file under `/api/`. The HTTP method picks\nwhat happens, and some files also take an `action` (in the query string or the JSON body)\nto choose between several operations on the same method.\n\n**Signing in.** `POST /auth.php` returns a `token`. Send it on later calls as\n`Authorization: Bearer \u003ctoken>` (use the **Authorize** button). With a token, the server\nfilters data to the signed-in user: buyers see only their own bookings and chats, agents\nonly those on their own listings. Without a token, requests still work while the server\nsetting `AUTH_REQUIRED` is off, and then return everyone's data. A token that is present\nbut invalid or expired is always rejected with 401. No token is issued while the server\nsetting `AUTH_SECRET` is missing (`token` is then `null`).\n\n**Errors** always look like `{\"success\": false, \"error\": \"message\"}`.\n"
+    "description": "REST API behind the EstateFlow Android app (PHP + PostgreSQL, hosted on Wasmer).\n\n**How the API is shaped.** Each resource is one PHP file under `/api/`. The HTTP method picks\nwhat happens, and some files also take an `action` (in the query string or the JSON body)\nto choose between several operations on the same method.\n\n**No authorization.** No endpoint needs a token or an Authorization header. Every call\nreturns everyone's data (for example, all bookings and all chats), and the app filters\nwhat each user sees on the phone.\n\n**Errors** always look like `{\"success\": false, \"error\": \"message\"}`.\n"
   },
   "servers": [
     {
-      "url": "https://estateflow-backend.wasmer.app/api",
-      "description": "Live server (the one the app uses)"
+      "url": "https://swu-005.wasmer.app/api",
+      "description": "Live server (SWU-005)"
     },
     {
-      "url": "https://estateflow-backend-maverickteves.wasmer.app/api",
-      "description": "Second Wasmer deployment"
+      "url": "https://estateflow-backend.wasmer.app/api",
+      "description": "Older Wasmer deployment"
     },
     {
       "url": "http://localhost/estateflow-backend/api",
       "description": "Local XAMPP"
     }
   ],
+  "security": [],
   "tags": [
     {
       "name": "Status",
@@ -66,12 +67,6 @@
       "description": "Bulk sync used by the app"
     }
   ],
-  "security": [
-    {},
-    {
-      "bearerAuth": []
-    }
-  ],
   "paths": {
     "/status.php": {
       "get": {
@@ -80,9 +75,6 @@
         ],
         "summary": "Check the server and database connection",
         "operationId": "getStatus",
-        "security": [
-          {}
-        ],
         "responses": {
           "200": {
             "description": "Server and database are up",
@@ -129,7 +121,7 @@
           "Auth"
         ],
         "summary": "Get an agent profile",
-        "description": "A signed-in agent gets their own profile. Everyone else gets the demo agent's\nprofile (Sarah Jenkins).\n",
+        "description": "Returns the demo agent's profile (Sarah Jenkins).\n",
         "operationId": "getAgentProfile",
         "parameters": [
           {
@@ -158,9 +150,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -171,7 +160,7 @@
           "Auth"
         ],
         "summary": "Sign in, sign up, change password or update agent profile",
-        "description": "Pick the operation with `action` (query string, or an `action` field in the body).\nEach one takes a different body; choose a matching example below.\n\n| action | Who | Body | Success |\n|---|---|---|---|\n| `client_login` (default) | buyer | email, password | 200 AuthResponse |\n| `client_signup` | buyer | name, email, password (8+), phone | 201 AuthResponse |\n| `agent_login` | agent | emailOrLicense, password | 200 AuthResponse |\n| `agent_signup` | agent | name, email, licenseNo, password (8+), agency, professionalRole | 201 AuthResponse |\n| `update_password` | anyone | email, currentPassword, newPassword (8+) | 200 PasswordUpdated |\n| `update_profile` | signed-in agent only | name, email, licenseNo, title | 200 AgentProfile |\n\nSign-in, sign-up and password changes are limited to 5 wrong attempts per account in\n15 minutes (then 429). Agent license numbers must be `PRC-REB-` plus 7 digits.\n",
+        "description": "Pick the operation with `action` (query string, or an `action` field in the body).\nEach one takes a different body; choose a matching example below.\n\n| action | Who | Body | Success |\n|---|---|---|---|\n| `client_login` (default) | buyer | email, password | 200 AuthResponse |\n| `client_signup` | buyer | name, email, password (8+), phone | 201 AuthResponse |\n| `agent_login` | agent | emailOrLicense, password | 200 AuthResponse |\n| `agent_signup` | agent | name, email, licenseNo, password (8+), agency, professionalRole | 201 AuthResponse |\n| `update_password` | anyone | email, currentPassword, newPassword (8+) | 200 PasswordUpdated |\n\nSign-in, sign-up and password changes are limited to 5 wrong attempts per account in\n15 minutes (then 429). Agent license numbers must be `PRC-REB-` plus 7 digits.\n",
         "operationId": "authAction",
         "parameters": [
           {
@@ -184,8 +173,7 @@
                 "client_signup",
                 "agent_login",
                 "agent_signup",
-                "update_password",
-                "update_profile"
+                "update_password"
               ],
               "default": "client_login"
             }
@@ -211,9 +199,6 @@
                   },
                   {
                     "$ref": "#/components/schemas/UpdatePassword"
-                  },
-                  {
-                    "$ref": "#/components/schemas/UpdateProfile"
                   }
                 ]
               },
@@ -259,15 +244,6 @@
                     "currentPassword": "old-password",
                     "newPassword": "new-password-8+"
                   }
-                },
-                "update_profile": {
-                  "summary": "Update own agent profile (action=update_profile, token required)",
-                  "value": {
-                    "name": "Sarah Jenkins",
-                    "email": "sarah.jenkins@estateflow.com",
-                    "licenseNo": "PRC-REB-0012345",
-                    "title": "Premier Real Estate Broker • Cebu City Properties"
-                  }
                 }
               }
             }
@@ -275,7 +251,7 @@
         },
         "responses": {
           "200": {
-            "description": "Signed in, password changed, or profile updated",
+            "description": "Signed in, or password changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -285,9 +261,6 @@
                     },
                     {
                       "$ref": "#/components/schemas/PasswordUpdated"
-                    },
-                    {
-                      "$ref": "#/components/schemas/AgentProfile"
                     }
                   ]
                 }
@@ -310,9 +283,6 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -328,11 +298,8 @@
           "Properties"
         ],
         "summary": "List listings, or get one by id",
-        "description": "Public, no sign-in needed. With `id` it returns one Property; otherwise a list, newest first.",
+        "description": "With `id` it returns one Property; otherwise a list, newest first.",
         "operationId": "getProperties",
-        "security": [
-          {}
-        ],
         "parameters": [
           {
             "name": "id",
@@ -412,7 +379,7 @@
           "Properties"
         ],
         "summary": "Create or save a listing (agents)",
-        "description": "Creates a listing, or overwrites it if `id` already exists. A signed-in agent's listing\nis always saved under their own name and email, and they can't overwrite another\nagent's listing (403). Also adds a \"New Property Published\" notification.\n\nWith `action=delete` this deletes instead (same as `DELETE`, pass `id`).\n",
+        "description": "Creates a listing, or overwrites it if `id` already exists. Set `agentName` and\n`agentEmail` to the posting agent (they default to Sarah Jenkins). Also adds a\n\"New Property Published\" notification.\n\nWith `action=delete` this deletes instead (same as `DELETE`, pass `id`).\n",
         "operationId": "createProperty",
         "parameters": [
           {
@@ -459,12 +426,6 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -542,12 +503,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -558,7 +513,7 @@
           "Properties"
         ],
         "summary": "Delete a listing (agents)",
-        "description": "Deletes the listing, cancels its open viewings, and adds a \"Listing Removed\"\nnotification. A signed-in agent can only delete their own listings.\n",
+        "description": "Deletes the listing, cancels its open viewings, and adds a \"Listing Removed\"\nnotification.\n",
         "operationId": "deleteProperty",
         "parameters": [
           {
@@ -577,12 +532,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -595,7 +544,7 @@
           "Appointments"
         ],
         "summary": "List viewing appointments",
-        "description": "Buyers get their own; agents get those on their own listings; no token gets all.",
+        "description": "Returns every appointment. Filter by `client_email` or `status`.",
         "operationId": "getAppointments",
         "parameters": [
           {
@@ -628,9 +577,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           }
         }
       },
@@ -639,7 +585,7 @@
           "Appointments"
         ],
         "summary": "Book a viewing",
-        "description": "Books a viewing (or updates status, date, time and notes if `id` exists). A signed-in\nbuyer always books as themselves. Adds a \"Viewing Appointment Booked\" notification.\n",
+        "description": "Books a viewing (or updates status, date, time and notes if `id` exists). Adds a\n\"Viewing Appointment Booked\" notification.\n",
         "operationId": "bookAppointment",
         "requestBody": {
           "required": true,
@@ -664,12 +610,6 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
           }
         }
       },
@@ -720,12 +660,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -761,12 +695,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -779,7 +707,7 @@
           "Inquiries"
         ],
         "summary": "List conversations, or get one by id",
-        "description": "Each inquiry is one conversation about one property with one buyer, including its\nmessages. Buyers get their own; agents get those on their own listings; no token gets all.\n",
+        "description": "Each inquiry is one conversation about one property with one buyer, including its\nmessages. Without `id`, returns every conversation.\n",
         "operationId": "getInquiries",
         "parameters": [
           {
@@ -812,9 +740,6 @@
               }
             }
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -825,7 +750,7 @@
           "Inquiries"
         ],
         "summary": "Start a conversation, or reply in one",
-        "description": "**New message from a buyer:** send `propertyId` and `message`. If this buyer already has\na conversation about the property, the message is added to it. Adds a \"New Lead\nInquiry\" notification. Returns the whole conversation.\n\n**Reply:** use `action=reply` with `inquiryId` and `replyText`. When signed in, the server\ndecides whether the reply is from the agent or the buyer; without a token `isAgent`\ndecides (default true).\n",
+        "description": "**New message from a buyer:** send `propertyId` and `message`. If this buyer already has\na conversation about the property, the message is added to it. Adds a \"New Lead\nInquiry\" notification. Returns the whole conversation.\n\n**Reply:** use `action=reply` with `inquiryId` and `replyText`. `isAgent` says who is\nreplying: true (the default) for the agent, false for the buyer.\n",
         "operationId": "createOrReplyInquiry",
         "parameters": [
           {
@@ -896,9 +821,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -961,9 +883,6 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -976,7 +895,7 @@
           "Notifications"
         ],
         "summary": "List notifications",
-        "description": "Notifications have no recipient yet. Buyers get listing updates plus notifications about\ntheir own bookings and conversations; agents and no-token callers get every notification.\n",
+        "description": "Returns every notification (notifications have no recipient yet).\n",
         "operationId": "getNotifications",
         "responses": {
           "200": {
@@ -991,9 +910,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           }
         }
       },
@@ -1054,9 +970,6 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           }
         }
       },
@@ -1115,9 +1028,6 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -1128,7 +1038,7 @@
           "Sync"
         ],
         "summary": "Download everything the caller may see",
-        "description": "What the app downloads on Sync: all listings, plus appointments, conversations and\nnotifications filtered by who is signed in, plus an agent profile. With no token and\n`AUTH_REQUIRED` off, everything is returned.\n",
+        "description": "What the app downloads on Sync: all listings, plus appointments, conversations and\nnotifications, plus the agent profile. Everything is returned.\n",
         "operationId": "getSyncState",
         "responses": {
           "200": {
@@ -1140,9 +1050,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
           }
         }
       },
@@ -1151,7 +1058,7 @@
           "Sync"
         ],
         "summary": "Upload listings and appointments, then download everything (agents)",
-        "description": "Saves the `properties` and `appointments` sent (by id; existing ones are overwritten),\nthen returns the same response as `GET`. A signed-in agent's listings are saved under\ntheir own name, and another agent's listings in the upload are skipped.\n",
+        "description": "Saves the `properties` and `appointments` sent (by id; existing ones are overwritten),\nthen returns the same response as `GET`.\n",
         "operationId": "postSync",
         "requestBody": {
           "required": true,
@@ -1188,12 +1095,6 @@
               }
             }
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
@@ -1202,13 +1103,6 @@
     }
   },
   "components": {
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "The `token` returned by a sign-in or sign-up in `POST /auth.php`. Valid for 30 days, or until the password changes."
-      }
-    },
     "responses": {
       "BadRequest": {
         "description": "Missing or invalid input",
@@ -1221,17 +1115,7 @@
         }
       },
       "Unauthorized": {
-        "description": "Wrong email or password, or the token is missing (when AUTH_REQUIRED is on), invalid or expired",
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/Error"
-            }
-          }
-        }
-      },
-      "Forbidden": {
-        "description": "Signed in, but not allowed (wrong role, or someone else's record)",
+        "description": "Wrong email or password",
         "content": {
           "application/json": {
             "schema": {
@@ -1420,11 +1304,6 @@
             "type": "boolean",
             "example": true
           },
-          "token": {
-            "type": "string",
-            "nullable": true,
-            "description": "Send as `Authorization Bearer`. Null while AUTH_SECRET is not set on the server."
-          },
           "user": {
             "$ref": "#/components/schemas/User"
           }
@@ -1439,11 +1318,6 @@
           },
           "message": {
             "type": "string"
-          },
-          "token": {
-            "type": "string",
-            "nullable": true,
-            "description": "New token; the old one stops working"
           }
         }
       },
@@ -1567,32 +1441,6 @@
             "type": "string",
             "format": "password",
             "minLength": 8
-          }
-        }
-      },
-      "UpdateProfile": {
-        "title": "update_profile",
-        "type": "object",
-        "required": [
-          "name",
-          "email",
-          "licenseNo"
-        ],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string",
-            "format": "email"
-          },
-          "licenseNo": {
-            "type": "string",
-            "pattern": "^PRC-REB-[0-9]{7}$"
-          },
-          "title": {
-            "type": "string",
-            "default": "Licensed Real Estate Agent"
           }
         }
       },
@@ -1779,7 +1627,7 @@
           "address",
           "price"
         ],
-        "description": "Same fields as Property. Only title, address and price are required; the rest have defaults. A signed-in agent's own name and email replace agentName and agentEmail.",
+        "description": "Same fields as Property. Only title, address and price are required; the rest have defaults.",
         "properties": {
           "id": {
             "type": "string",
@@ -1978,7 +1826,7 @@
           "clientEmail": {
             "type": "string",
             "format": "email",
-            "description": "Replaced by the signed-in buyer's email"
+            "example": "alex.turner@example.com"
           },
           "date": {
             "type": "string",
@@ -2103,8 +1951,7 @@
           },
           "senderEmail": {
             "type": "string",
-            "format": "email",
-            "description": "Replaced by the signed-in buyer's email"
+            "format": "email"
           },
           "senderPhone": {
             "type": "string"
@@ -2135,7 +1982,7 @@
           "isAgent": {
             "type": "boolean",
             "default": true,
-            "description": "Ignored when a token is sent"
+            "description": "True if the agent is replying, false for the buyer"
           }
         }
       },
@@ -2254,24 +2101,20 @@
   }
 };
 
-    // When this page is served by the backend itself, list that server first
-    if (location.protocol === 'http:' || location.protocol === 'https:') {
-      var here = location.origin + location.pathname.replace(/\/docs(\/.*)?$/, '') + '/api';
-      if (!spec.servers.some(function (s) { return s.url === here; })) {
-        spec.servers.unshift({ url: here, description: 'This server' });
-      }
-    }
-
-    window.ui = SwaggerUIBundle({
-      spec: spec,
+    var options = {
       dom_id: '#swagger-ui',
       deepLinking: true,
       docExpansion: 'list',
       defaultModelsExpandDepth: 0,
-      persistAuthorization: true,
-      tryItOutEnabled: false,
       validatorUrl: null
-    });
+    };
+    // Served by the backend: load the spec file next to this page, like a standard Swagger UI
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+      options.url = 'openapi.json';
+    } else {
+      options.spec = spec;
+    }
+    window.ui = SwaggerUIBundle(options);
   </script>
 </body>
 </html>

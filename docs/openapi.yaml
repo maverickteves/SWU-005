@@ -9,22 +9,20 @@ info:
     what happens, and some files also take an `action` (in the query string or the JSON body)
     to choose between several operations on the same method.
 
-    **Signing in.** `POST /auth.php` returns a `token`. Send it on later calls as
-    `Authorization: Bearer <token>` (use the **Authorize** button). With a token, the server
-    filters data to the signed-in user: buyers see only their own bookings and chats, agents
-    only those on their own listings. Without a token, requests still work while the server
-    setting `AUTH_REQUIRED` is off, and then return everyone's data. A token that is present
-    but invalid or expired is always rejected with 401. No token is issued while the server
-    setting `AUTH_SECRET` is missing (`token` is then `null`).
+    **No authorization.** No endpoint needs a token or an Authorization header. Every call
+    returns everyone's data (for example, all bookings and all chats), and the app filters
+    what each user sees on the phone.
 
     **Errors** always look like `{"success": false, "error": "message"}`.
 servers:
+  - url: https://swu-005.wasmer.app/api
+    description: Live server (SWU-005)
   - url: https://estateflow-backend.wasmer.app/api
-    description: Live server (the one the app uses)
-  - url: https://estateflow-backend-maverickteves.wasmer.app/api
-    description: Second Wasmer deployment
+    description: Older Wasmer deployment
   - url: http://localhost/estateflow-backend/api
     description: Local XAMPP
+# No authorization: no endpoint takes a token
+security: []
 tags:
   - name: Status
     description: Health check
@@ -40,17 +38,12 @@ tags:
     description: Activity notifications
   - name: Sync
     description: Bulk sync used by the app
-security:
-  - {}
-  - bearerAuth: []
-
 paths:
   /status.php:
     get:
       tags: [Status]
       summary: Check the server and database connection
       operationId: getStatus
-      security: [{}]
       responses:
         "200":
           description: Server and database are up
@@ -74,8 +67,7 @@ paths:
       tags: [Auth]
       summary: Get an agent profile
       description: |
-        A signed-in agent gets their own profile. Everyone else gets the demo agent's
-        profile (Sarah Jenkins).
+        Returns the demo agent's profile (Sarah Jenkins).
       operationId: getAgentProfile
       parameters:
         - name: action
@@ -88,7 +80,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AgentProfile" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Auth]
@@ -104,7 +95,6 @@ paths:
         | `agent_login` | agent | emailOrLicense, password | 200 AuthResponse |
         | `agent_signup` | agent | name, email, licenseNo, password (8+), agency, professionalRole | 201 AuthResponse |
         | `update_password` | anyone | email, currentPassword, newPassword (8+) | 200 PasswordUpdated |
-        | `update_profile` | signed-in agent only | name, email, licenseNo, title | 200 AgentProfile |
 
         Sign-in, sign-up and password changes are limited to 5 wrong attempts per account in
         15 minutes (then 429). Agent license numbers must be `PRC-REB-` plus 7 digits.
@@ -114,7 +104,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [client_login, client_signup, agent_login, agent_signup, update_password, update_profile]
+            enum: [client_login, client_signup, agent_login, agent_signup, update_password]
             default: client_login
       requestBody:
         required: true
@@ -127,7 +117,6 @@ paths:
                 - $ref: "#/components/schemas/AgentLogin"
                 - $ref: "#/components/schemas/AgentSignup"
                 - $ref: "#/components/schemas/UpdatePassword"
-                - $ref: "#/components/schemas/UpdateProfile"
             examples:
               client_login:
                 summary: Buyer sign in (action=client_login)
@@ -144,19 +133,15 @@ paths:
               update_password:
                 summary: Change password (action=update_password)
                 value: { email: alex.turner@example.com, currentPassword: old-password, newPassword: new-password-8+ }
-              update_profile:
-                summary: Update own agent profile (action=update_profile, token required)
-                value: { name: Sarah Jenkins, email: sarah.jenkins@estateflow.com, licenseNo: PRC-REB-0012345, title: Premier Real Estate Broker • Cebu City Properties }
       responses:
         "200":
-          description: Signed in, password changed, or profile updated
+          description: Signed in, or password changed
           content:
             application/json:
               schema:
                 oneOf:
                   - $ref: "#/components/schemas/AuthResponse"
                   - $ref: "#/components/schemas/PasswordUpdated"
-                  - $ref: "#/components/schemas/AgentProfile"
         "201":
           description: Account created
           content:
@@ -164,7 +149,6 @@ paths:
               schema: { $ref: "#/components/schemas/AuthResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/TooManyAttempts" }
 
@@ -172,9 +156,8 @@ paths:
     get:
       tags: [Properties]
       summary: List listings, or get one by id
-      description: Public, no sign-in needed. With `id` it returns one Property; otherwise a list, newest first.
+      description: With `id` it returns one Property; otherwise a list, newest first.
       operationId: getProperties
-      security: [{}]
       parameters:
         - { name: id, in: query, description: "Return just this listing (for example prop_pinecrest). Leave empty to list all.", schema: { type: string } }
         - { name: search, in: query, description: "Text in title, address, city or description", schema: { type: string } }
@@ -197,9 +180,9 @@ paths:
       tags: [Properties]
       summary: Create or save a listing (agents)
       description: |
-        Creates a listing, or overwrites it if `id` already exists. A signed-in agent's listing
-        is always saved under their own name and email, and they can't overwrite another
-        agent's listing (403). Also adds a "New Property Published" notification.
+        Creates a listing, or overwrites it if `id` already exists. Set `agentName` and
+        `agentEmail` to the posting agent (they default to Sarah Jenkins). Also adds a
+        "New Property Published" notification.
 
         With `action=delete` this deletes instead (same as `DELETE`, pass `id`).
       operationId: createProperty
@@ -223,8 +206,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Property" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     put:
       tags: [Properties]
@@ -262,30 +243,26 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Property" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Properties]
       summary: Delete a listing (agents)
       description: |
         Deletes the listing, cancels its open viewings, and adds a "Listing Removed"
-        notification. A signed-in agent can only delete their own listings.
+        notification.
       operationId: deleteProperty
       parameters:
         - { name: id, in: query, required: true, schema: { type: string } }
       responses:
         "200": { $ref: "#/components/responses/Deleted" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /appointments.php:
     get:
       tags: [Appointments]
       summary: List viewing appointments
-      description: Buyers get their own; agents get those on their own listings; no token gets all.
+      description: Returns every appointment. Filter by `client_email` or `status`.
       operationId: getAppointments
       parameters:
         - { name: client_email, in: query, description: Ignored for buyers, schema: { type: string, format: email } }
@@ -298,13 +275,12 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Appointment" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Appointments]
       summary: Book a viewing
       description: |
-        Books a viewing (or updates status, date, time and notes if `id` exists). A signed-in
-        buyer always books as themselves. Adds a "Viewing Appointment Booked" notification.
+        Books a viewing (or updates status, date, time and notes if `id` exists). Adds a
+        "Viewing Appointment Booked" notification.
       operationId: bookAppointment
       requestBody:
         required: true
@@ -318,8 +294,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Appointment" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
     put:
       tags: [Appointments]
       summary: Change an appointment's status
@@ -338,8 +312,6 @@ paths:
                   success: { type: boolean, example: true }
                   appointment: { $ref: "#/components/schemas/Appointment" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Appointments]
@@ -354,8 +326,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SuccessMessage" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /inquiries.php:
@@ -364,7 +334,7 @@ paths:
       summary: List conversations, or get one by id
       description: |
         Each inquiry is one conversation about one property with one buyer, including its
-        messages. Buyers get their own; agents get those on their own listings; no token gets all.
+        messages. Without `id`, returns every conversation.
       operationId: getInquiries
       parameters:
         - { name: id, in: query, description: Return just this conversation, schema: { type: string } }
@@ -378,7 +348,6 @@ paths:
                   - type: array
                     items: { $ref: "#/components/schemas/Inquiry" }
                   - $ref: "#/components/schemas/Inquiry"
-        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Inquiries]
@@ -388,9 +357,8 @@ paths:
         a conversation about the property, the message is added to it. Adds a "New Lead
         Inquiry" notification. Returns the whole conversation.
 
-        **Reply:** use `action=reply` with `inquiryId` and `replyText`. When signed in, the server
-        decides whether the reply is from the agent or the buyer; without a token `isAgent`
-        decides (default true).
+        **Reply:** use `action=reply` with `inquiryId` and `replyText`. `isAgent` says who is
+        replying: true (the default) for the agent, false for the buyer.
       operationId: createOrReplyInquiry
       parameters:
         - name: action
@@ -421,7 +389,6 @@ paths:
                   - $ref: "#/components/schemas/Inquiry"
                   - $ref: "#/components/schemas/ReplyResult"
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/ServerError" }
     put:
@@ -443,7 +410,6 @@ paths:
                   id: { type: string }
                   isUnread: { type: boolean, example: false }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /notifications.php:
@@ -451,8 +417,7 @@ paths:
       tags: [Notifications]
       summary: List notifications
       description: |
-        Notifications have no recipient yet. Buyers get listing updates plus notifications about
-        their own bookings and conversations; agents and no-token callers get every notification.
+        Returns every notification (notifications have no recipient yet).
       operationId: getNotifications
       responses:
         "200":
@@ -462,7 +427,6 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Notification" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
     put:
       tags: [Notifications]
       summary: Mark one, or all, as read
@@ -485,7 +449,6 @@ paths:
                   isRead: { type: boolean, example: true }
                   message: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Notifications]
       summary: Create a notification
@@ -510,7 +473,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Notification" }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /sync.php:
     get:
@@ -518,8 +480,7 @@ paths:
       summary: Download everything the caller may see
       description: |
         What the app downloads on Sync: all listings, plus appointments, conversations and
-        notifications filtered by who is signed in, plus an agent profile. With no token and
-        `AUTH_REQUIRED` off, everything is returned.
+        notifications, plus the agent profile. Everything is returned.
       operationId: getSyncState
       responses:
         "200":
@@ -527,14 +488,12 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SyncState" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Sync]
       summary: Upload listings and appointments, then download everything (agents)
       description: |
         Saves the `properties` and `appointments` sent (by id; existing ones are overwritten),
-        then returns the same response as `GET`. A signed-in agent's listings are saved under
-        their own name, and another agent's listings in the upload are skipped.
+        then returns the same response as `GET`.
       operationId: postSync
       requestBody:
         required: true
@@ -555,17 +514,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SyncState" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/ServerError" }
 
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      description: The `token` returned by a sign-in or sign-up in `POST /auth.php`. Valid for 30 days, or until the password changes.
-
   responses:
     BadRequest:
       description: Missing or invalid input
@@ -573,12 +524,7 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
-      description: Wrong email or password, or the token is missing (when AUTH_REQUIRED is on), invalid or expired
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    Forbidden:
-      description: Signed in, but not allowed (wrong role, or someone else's record)
+      description: Wrong email or password
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -658,10 +604,6 @@ components:
       type: object
       properties:
         success: { type: boolean, example: true }
-        token:
-          type: string
-          nullable: true
-          description: Send as `Authorization Bearer`. Null while AUTH_SECRET is not set on the server.
         user: { $ref: "#/components/schemas/User" }
 
     PasswordUpdated:
@@ -669,7 +611,6 @@ components:
       properties:
         success: { type: boolean, example: true }
         message: { type: string }
-        token: { type: string, nullable: true, description: New token; the old one stops working }
 
     ClientLogin:
       title: client_login
@@ -717,16 +658,6 @@ components:
         email: { type: string, format: email }
         currentPassword: { type: string, format: password }
         newPassword: { type: string, format: password, minLength: 8 }
-
-    UpdateProfile:
-      title: update_profile
-      type: object
-      required: [name, email, licenseNo]
-      properties:
-        name: { type: string }
-        email: { type: string, format: email }
-        licenseNo: { type: string, pattern: "^PRC-REB-[0-9]{7}$" }
-        title: { type: string, default: Licensed Real Estate Agent }
 
     AgentProfile:
       type: object
@@ -780,7 +711,7 @@ components:
     PropertyInput:
       type: object
       required: [title, address, price]
-      description: Same fields as Property. Only title, address and price are required; the rest have defaults. A signed-in agent's own name and email replace agentName and agentEmail.
+      description: Same fields as Property. Only title, address and price are required; the rest have defaults.
       properties:
         id: { type: string, description: Generated if left out; an existing id is overwritten }
         title: { type: string, example: Skyline Penthouse at The Zenith }
@@ -838,7 +769,7 @@ components:
         propertyAddress: { type: string }
         clientName: { type: string, example: Alex Turner }
         clientPhone: { type: string }
-        clientEmail: { type: string, format: email, description: Replaced by the signed-in buyer's email }
+        clientEmail: { type: string, format: email, example: alex.turner@example.com }
         date: { type: string, example: "Wed, Oct 16" }
         timeSlot: { type: string, example: "4:30 PM" }
         type: { type: string, default: Viewing }
@@ -881,7 +812,7 @@ components:
         propertyId: { type: string }
         message: { type: string, maxLength: 5000 }
         senderName: { type: string }
-        senderEmail: { type: string, format: email, description: Replaced by the signed-in buyer's email }
+        senderEmail: { type: string, format: email }
         senderPhone: { type: string }
         propertyTitle: { type: string }
         propertyAddress: { type: string }
@@ -893,7 +824,7 @@ components:
       properties:
         inquiryId: { type: string }
         replyText: { type: string, maxLength: 5000 }
-        isAgent: { type: boolean, default: true, description: Ignored when a token is sent }
+        isAgent: { type: boolean, default: true, description: "True if the agent is replying, false for the buyer" }
 
     ReplyResult:
       type: object
